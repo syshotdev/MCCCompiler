@@ -1,4 +1,5 @@
 #include <ctype.h>
+//#include <glib.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -11,81 +12,127 @@
  * Try to reuse variables
  *
  * Tokenizer:
- * Split words by whitespace (So checking keywords is easier, and variable names can have numbers)
- * For every character, check if it's a punctuation, number, word, or character
- * If starts with letter, check every keyword then just act like it's a random word
- * Grab the full number for number
- * Tokenize punctuation as-is
+ * Split words by whitespace (So checking keywords is easier, and variable names
+ * can have numbers) For every character, check if it's a punctuation, number,
+ * word, or character If starts with letter, check every keyword then just act
+ * like it's a random word Grab the full number for number Tokenize punctuation
+ * as-is
  */
 
-typedef enum { SEMI_COLON, OPEN_PARENTHESES, CLOSE_PARENTHESES } type_separator;
-
-typedef enum {
-  EXIT,
-} type_keyword;
+#define tokens_size 128
 
 typedef enum {
   INT,
-} type_literal;
+  KEYWORD,
+  SEPARATOR,
+} token_type;
 
 typedef struct {
-  type_separator type;
-} token_separator;
+  token_type type;
+  char *value;
+} token;
 
-typedef struct {
-  type_keyword type;
-} token_keyword;
-
-typedef struct {
-  type_literal type;
-  int value;
-} token_literal;
-
-token_literal generate_number(char current, FILE *file){
-  token_literal token;
-  token.type = INT;
-  char *value = malloc(sizeof(char) * 8);
-
-  while(isdigit(current) && current != EOF){
-    printf("%c", current);
-    current = fgetc(file);
-  }
-
-  free(value);
+token *generate_separator(char current) {
+  token *token = malloc(sizeof(token));
+  token->type = KEYWORD;
+  token->value = malloc(sizeof(char) * 2);
+  token->value[0] = current;
+  token->value[1] = '\0';
 
   return token;
 }
 
-void lexer(FILE *file) {
+token *generate_keyword(char current, FILE *file) {
+  char *value = malloc(sizeof(char) * 8);
+  int value_index = 0;
+
+  while (isalpha(current) && current != EOF) {
+    value[value_index] = current;
+    value_index++;
+    current = fgetc(file);
+  };
+  // Return character that is not letter
+  ungetc(current, file);
+
+  token *token = malloc(sizeof(token));
+  token->type = KEYWORD;
+  token->value = value;
+
+  return token;
+}
+
+token *generate_number(char current, FILE *file) {
+  char *value = malloc(sizeof(char) * 8);
+  int value_index = 0;
+
+  while (isdigit(current) && current != EOF) {
+    value[value_index] = current;
+    value_index++;
+    current = fgetc(file);
+  };
+  // Return character that is not number
+  ungetc(current, file);
+
+  token *token = malloc(sizeof(token));
+  token->type = INT;
+  token->value = value;
+
+  return token;
+}
+
+token **lexer(FILE *file) {
+  // Array of references
+  token **tokens = malloc(sizeof(token) * 12);
+  int tokens_index = 0;
+  token *current_token;
+
   char current = fgetc(file);
 
   while (current != EOF) {
+    printf("%c\n", current);
     switch (current) {
     case '(':
-      printf("FOUND OPEN PARENTHESES\n");
-      break;
     case ')':
-      printf("FOUND CLOSED PARENTHESES\n");
-      break;
     case ';':
-      printf("FOUND SEMICOLON\n");
+      current_token = generate_separator(current);
       break;
     default:
       if (isdigit(current)) {
-        printf("FOUND DIGIT: %d\n", current - '0');
+        current_token = generate_number(current, file);
       } else if (isalpha(current)) {
-        printf("FOUND CHARACTER: %c\n", current);
+        current_token = generate_keyword(current, file);
+      } else {
+        printf("UNKNOWN CHARACTER: %c\n", current);
+        exit(1);
       }
       break;
     }
+
+    tokens[tokens_index] = current_token;
+    tokens_index++;
+
     current = fgetc(file);
   }
+
+  return tokens;
 }
 
 int main(void) {
   FILE *file;
   file = fopen("test.mcc", "r");
-  lexer(file);
+  token **tokens = lexer(file);
+  fclose(file);
+
+  // For every token, print it's value out
+  /*
+  int token_index = 0;
+  token *token = tokens[token_index];
+  while(token != NULL){
+    printf("%s\n", token->value);
+    token = tokens[token_index];
+    token_index++;
+  }
+  */
 
   return 0;
 }
