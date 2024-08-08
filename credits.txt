@@ -1,0 +1,8 @@
+Thanks to all of these people who I stole work off of:
+
+Configuration of my neovim by notusknot:
+https://www.youtube.com/watch?v=rUvjkBuKua4&t
+Series on building a compiler by Cobb Coding:
+https://www.youtube.com/watch?v=pqitDDFGc7I&list=PLRnI_2_ZWhtA_ZAzEa8uJF8wgGF0HjjEz
+C Vector Library by Mashpoe:
+https://github.com/Mashpoe/c-vector/tree/master

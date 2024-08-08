@@ -1,5 +1,5 @@
 #include <ctype.h>
-//#include <glib.h>
+#include "c-vector/vec.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -17,6 +17,7 @@
  * word, or character If starts with letter, check every keyword then just act
  * like it's a random word Grab the full number for number Tokenize punctuation
  * as-is
+ * How I wish I could preallocate all of the vectory mem via vector_create...
  */
 
 #define tokens_size 128
@@ -29,13 +30,15 @@ typedef enum {
 
 typedef struct {
   token_type type;
-  char *value;
+  char *value; // Always a vector!
 } token;
 
 token *generate_separator(char current) {
   token *token = malloc(sizeof(token));
   token->type = KEYWORD;
-  token->value = malloc(sizeof(char) * 2);
+  token->value = vector_create();
+  vector_reserve(&token->value, 2);
+
   token->value[0] = current;
   token->value[1] = '\0';
 
@@ -43,12 +46,11 @@ token *generate_separator(char current) {
 }
 
 token *generate_keyword(char current, FILE *file) {
-  char *value = malloc(sizeof(char) * 8);
-  int value_index = 0;
+  char *keyword_vector = vector_create();
+  vector_reserve(&keyword_vector, 8);
 
   while (isalpha(current) && current != EOF) {
-    value[value_index] = current;
-    value_index++;
+    vector_add(&keyword_vector, current);
     current = fgetc(file);
   };
   // Return character that is not letter
@@ -56,18 +58,17 @@ token *generate_keyword(char current, FILE *file) {
 
   token *token = malloc(sizeof(token));
   token->type = KEYWORD;
-  token->value = value;
+  token->value = keyword_vector;
 
   return token;
 }
 
 token *generate_number(char current, FILE *file) {
-  char *value = malloc(sizeof(char) * 8);
-  int value_index = 0;
+  char *number_vector = vector_create();
+  vector_reserve(&number_vector, 8);
 
   while (isdigit(current) && current != EOF) {
-    value[value_index] = current;
-    value_index++;
+    vector_add(&number_vector, current);
     current = fgetc(file);
   };
   // Return character that is not number
@@ -75,21 +76,21 @@ token *generate_number(char current, FILE *file) {
 
   token *token = malloc(sizeof(token));
   token->type = INT;
-  token->value = value;
+  token->value = number_vector;
 
   return token;
 }
 
-token **lexer(FILE *file) {
-  // Array of references
-  token **tokens = malloc(sizeof(token) * 12);
-  int tokens_index = 0;
+  //printf("%s\n", token->value);
+token *lexer(FILE *file) {
+  // Array of references to the tokens
+  token *tokens = vector_create();
+  vector_reserve(&tokens, 16);
   token *current_token;
 
-  char current = fgetc(file);
-
+  char current = ' ';
   while (current != EOF) {
-    printf("%c\n", current);
+    current = fgetc(file);
     switch (current) {
     case '(':
     case ')':
@@ -103,36 +104,29 @@ token **lexer(FILE *file) {
         current_token = generate_keyword(current, file);
       } else {
         printf("UNKNOWN CHARACTER: %c\n", current);
-        exit(1);
+        continue; //exit(1);
       }
       break;
     }
 
-    tokens[tokens_index] = current_token;
-    tokens_index++;
-
-    current = fgetc(file);
+    printf("What's inside: %s\n", current_token->value);
+    vector_add(&tokens, *current_token);
   }
 
   return tokens;
 }
 
+// I think no memory leaks or segmentation faults. Good luck!
 int main(void) {
   FILE *file;
   file = fopen("test.mcc", "r");
-  token **tokens = lexer(file);
-  fclose(file);
+  token *tokens = lexer(file);
 
-  // For every token, print it's value out
-  /*
-  int token_index = 0;
-  token *token = tokens[token_index];
-  while(token != NULL){
-    printf("%s\n", token->value);
-    token = tokens[token_index];
-    token_index++;
+  for(size_t i = 0; i < vector_size(tokens); i++){
+    printf("%s\n", tokens[i].value);
   }
-  */
+
+  fclose(file);
 
   return 0;
 }

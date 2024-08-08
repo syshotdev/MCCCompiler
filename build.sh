@@ -1,1 +1,1 @@
-gcc main.c -o main -Wall -Wextra
+gcc -o main main.c c-vector/vec.c -Wall -Wextra
