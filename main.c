@@ -1,5 +1,5 @@
-#include <ctype.h>
 #include "c-vector/vec.h"
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -81,7 +81,7 @@ token *generate_number(char current, FILE *file) {
   return token;
 }
 
-  //printf("%s\n", token->value);
+// printf("%s\n", token->value);
 token *lexer(FILE *file) {
   // Array of references to the tokens
   token *tokens = vector_create();
@@ -92,8 +92,16 @@ token *lexer(FILE *file) {
   while (current != EOF) {
     current = fgetc(file);
     switch (current) {
+    // Skip whitespace
+    case ' ':
+    case '\t':
+      continue;
+      break; // I don't know if this necessary
     case '(':
     case ')':
+    case '{':
+    case '}':
+    case '.':
     case ';':
       current_token = generate_separator(current);
       break;
@@ -103,8 +111,9 @@ token *lexer(FILE *file) {
       } else if (isalpha(current)) {
         current_token = generate_keyword(current, file);
       } else {
+        // This text annoying as heck
         printf("UNKNOWN CHARACTER: %c\n", current);
-        continue; //exit(1);
+        continue; // exit(1);
       }
       break;
     }
@@ -118,11 +127,17 @@ token *lexer(FILE *file) {
 
 // I think no memory leaks or segmentation faults. Good luck!
 int main(void) {
+  char file_name[] = "test.mcc";
+
   FILE *file;
   file = fopen("test.mcc", "r");
+
+  if(!file){
+    printf("Couldn't find file: %s", file_name);
+  }
   token *tokens = lexer(file);
 
-  for(size_t i = 0; i < vector_size(tokens); i++){
+  for (size_t i = 0; i < vector_size(tokens); i++) {
     printf("%s\n", tokens[i].value);
   }
 
