@@ -1,0 +1,96 @@
+#include "c-vector/vec.h"
+#include "lexer.h"
+#include <stdio.h>
+#include <stdlib.h>
+
+/*
+ * The syntax function should take a look at the tree and figure out if it's
+ * grammatically correct Semantic analyzation is checking if parameters have the
+ * right types, variables are initialized, stuff like that.
+ *
+ */
+
+typedef enum {
+  NODE_START,
+  NODE_CALL_FUNCTION,
+  NODE_RETURN,
+
+  NODE_SEPARATOR,
+
+  NODE_POINTER,
+  NODE_INT,
+  NODE_VARIABLE,
+
+  NODE_EQUATION,
+  NODE_ADD,
+  NODE_SUBTRACT,
+  NODE_MULTIPLY,
+  NODE_DIVIDE,
+
+  NODE_DECLARATION,
+  NODE_PARAMETER,
+} node_type;
+
+typedef struct {
+  node_type type;
+  union {
+    struct node *next_nodes; // Always a vector!
+    char *data;              // Always a vector!
+  };
+} node;
+
+node *generate_node(node_type type){
+  node *node = malloc(sizeof(node));
+  node->next_nodes = vector_create();
+  return node;
+}
+
+token get_token(token **token_pointer) {
+  return **token_pointer;
+}
+
+token peek_token(token **token_pointer) {
+}
+
+
+void syntax_analyzer(){
+}
+void semantic_analyzer(){
+}
+
+/*
+ * int i = 1;
+ *
+ * TYPE -> NAME -> =, (), ,;
+ *
+ * = -> ASSIGN -> STATEMENT -> ;
+ *
+ * STATEMENT -> (LITERAL, VARIABLE, FUNCTION CALL)... -> ;
+ *
+ * () -> FUNCTION -> FUNCTION PARAMETER -> ) -> BLOCK (IS EQUAL TO {})
+ *
+ * ,; -> UNASSIGNED VARIABLE OR FUNCTION PARAMETER
+ *
+ */
+
+/*
+node *generate_ast(node *nodes) {
+}
+*/
+
+// Takes in tokens, outputs an Abstract Syntax Tree (AST)
+node *parser(token *tokens) {
+  node *ast = generate_node(NODE_START);
+  token **current_token = &tokens;
+
+  for (int i = 0; i < vector_size(tokens); i++) {
+    token current_token = tokens[i];
+    switch (current_token.type) {
+      case TOKEN_INT:
+        i++;
+        break;
+    }
+  }
+
+  return ast;
+}
