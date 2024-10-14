@@ -5,31 +5,63 @@
 typedef enum {
   TOKEN_END,
 
+  TOKEN_BOOL,
   TOKEN_INT,
+  TOKEN_CHAR,
+  TOKEN_VOID,
+
+  TOKEN_VOLATILE,
+  TOKEN_UNSIGNED,
+  TOKEN_CONST,
+  TOKEN_REGISTER,
+
+  TOKEN_TRUE,
+  TOKEN_FALSE,
+  TOKEN_NULL,
+
+  TOKEN_SIZEOF,
+  TOKEN_TYPEOF,
+
+  TOKEN_STRUCT,
+  TOKEN_ENUM,
+  TOKEN_UNION,
+
+  TOKEN_DO,
+  TOKEN_WHILE,
+  TOKEN_FOR,
+  TOKEN_BREAK,
+  TOKEN_CONTINUE,
+
+  TOKEN_IF,
+  TOKEN_ELSE,
+  TOKEN_SWITCH,
+  TOKEN_CASE,
+  TOKEN_DEFAULT,
+
+  TOKEN_INLINE,
+
+
+  TOKEN_NUMBER,
   TOKEN_STRING,
+  TOKEN_TYPE,
   TOKEN_NAME, // Function name, variable name
 
-  TOKEN_KEYWORD,
-  TOKEN_SEPARATOR,
-  TOKEN_RETURN,
-
-  // TODO: +=, Keywords like return, while, for, stuff like that
   TOKEN_EQUALS,
-  /*
   TOKEN_EQUALS_EQUALS,
+  TOKEN_NOT,
+  TOKEN_NOT_EQUALS,
+
   TOKEN_LESS_THAN,
   TOKEN_LESS_THAN_EQUALS,
   TOKEN_GREATER_THAN,
   TOKEN_GREATER_THAN_EQUALS,
-  TOKEN_NOT,
-  TOKEN_NOT_EQUALS,
 
-  TOKEN_PLUS_EQUALS,
-  TOKEN_MINUS_EQUALS,
-  TOKEN_STAR_EQUALS,
-  TOKEN_SLASH_EQUALS,
-  TOKEN_PERCENT_EQUALS,
-  */
+
+  TOKEN_AMPERSAND,
+  TOKEN_AND,
+  TOKEN_PIPE,
+  TOKEN_OR,
+  TOKEN_CARET, // XOR
 
   TOKEN_PLUS,
   TOKEN_PLUS_PLUS,
@@ -38,6 +70,15 @@ typedef enum {
   TOKEN_STAR,
   TOKEN_SLASH,
   TOKEN_PERCENT,
+  
+  TOKEN_DOT,
+  TOKEN_COMMA,
+  TOKEN_SEMI_COLON,
+  TOKEN_COLON,
+  TOKEN_LEFT_PARENTHESES,
+  TOKEN_RIGHT_PARENTHESES,
+  TOKEN_LEFT_BRACKET,
+  TOKEN_RIGHT_BRACKET,
 
 } token_type;
 
@@ -46,9 +87,6 @@ typedef struct {
   char *value; // Always a vector!
 } token;
 
-token *generate_separator(char current);
-token *generate_keyword(char current, FILE *file);
-token *generate_number(char current, FILE *file);
 token *lexer(FILE *file);
 
 #endif 

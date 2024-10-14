@@ -227,7 +227,6 @@ token *lexer(FILE *file) {
       break;
     case '*':
       current_token = create_token(TOKEN_STAR);
-      break;
     case '/': // If '//', do comment
       if (peek_char(file) == '/') {
         // Comment

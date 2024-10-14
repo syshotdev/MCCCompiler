@@ -1,12 +1,12 @@
-->#include "c-vector/vec.h"
+#include "c-vector/vec.h"
 #include "lexer.h"
 #include <stdio.h>
 #include <stdlib.h>
 
 /*
  * The syntax function should take a look at the tree and figure out if it's
- * grammatically correct Semantic analyzation is checking if parameters have the
- * right types, variables are initialized, stuff like that.
+ * grammatically correct Semantic analyzation is checking if parameters have
+ * the right types, variables are initialized, stuff like that.
  *
  */
 
@@ -23,14 +23,21 @@ typedef enum {
   NODE_POINTER,
   NODE_TYPE,
   NODE_VARIABLE,
-  NODE_LITERAL,
+  NODE_NUMBER,
   NODE_STRING,
 
-  NODE_EQUATION,
+  NODE_EXPRESSION, // Expression = 12, a_number, 30+(10-a_number)
+  NODE_EQUATION, // 1+1, !false
   NODE_ADD,
   NODE_SUBTRACT,
   NODE_MULTIPLY,
   NODE_DIVIDE,
+
+  NODE_COMPARISON,
+  NODE_NOT,
+  NODE_AND,
+  NODE_OR,
+  NODE_XOR,
 
   NODE_DECLARATION,
   NODE_FUNCTION_DECLARATION,
@@ -51,25 +58,21 @@ typedef enum {
   PRECEDENCE_PRIMARY,
 } precedence;
 
-typedef struct {
+typedef struct node {
   node_type type;
   union {
     struct node *next_nodes; // Always a vector!
-    char *data;              // Always a vector!
+    char *data;       // Always a vector!
   };
 } node;
 
-node *generate_node(node_type type) {
+node *create_node(node_type type) {
   node *node = malloc(sizeof(node));
   node->type = type;
   node->next_nodes = vector_create();
   return node;
 }
 
-void backtrack_token(token **token_pointer) {
-  // Pointer arithmetic to backtrack pointer by 1 token length
-  *token_pointer -= 1;
-}
 void advance_token(token **token_pointer) {
   // Pointer arithmetic to advance pointer by 1 token length
   *token_pointer += 1;
@@ -159,30 +162,41 @@ node *parse_number(token **token_pointer) {
 
 node *parse_unary(token **token_pointer) {}
 
+node *parse_binary(node *last_expression, token **token_pointer) {
+  token *operator_token = pop_token(token_pointer);
+  node *next_expression =
+      parse_precedence(get_precedence(operator_token->type) + 1, token_pointer);
 
-node *parse_binary(token **token_pointer) {
-  // We need to somehow take the last expression of the parser, the next
-  // expression and the math symbol and combine them.
-  //
-  // Kinda like int i = (EXPRESSION) <- grab value + parse this one ->
-  // (EXPRESSION)
-}
-/*
- * Tutorial code:
-static void binary() {
-  TokenType operatorType = parser.previous.type;
-  ParseRule* rule = getRule(operatorType);
-  parsePrecedence((Precedence)(rule->precedence + 1));
-
-  switch (operatorType) {
-    case TOKEN_PLUS:          emitByte(OP_ADD); break;
-    case TOKEN_MINUS:         emitByte(OP_SUBTRACT); break;
-    case TOKEN_STAR:          emitByte(OP_MULTIPLY); break;
-    case TOKEN_SLASH:         emitByte(OP_DIVIDE); break;
-    default: return; // Unreachable.
+  node_type type;
+  switch (operator_token->type) {
+  case TOKEN_PLUS:
+    type = NODE_ADD;
+    break;
+  case TOKEN_MINUS:
+    type = NODE_SUBTRACT;
+    break;
+  case TOKEN_STAR:
+    type = NODE_MULTIPLY;
+    break;
+  case TOKEN_SLASH:
+    type = NODE_DIVIDE;
+    break;
+  default:
+    printf("Error in parse binary");
+    exit(1);
   }
+
+  node *ast = create_node(NODE_EQUATION);
+  vector_reserve(&ast, 3);
+  // Man baby's first memory leak
+  // Idk how to free that "generate_node" one
+  ast->next_nodes[0] = *create_node(type);
+  ast->next_nodes[1] = *last_expression;
+  ast->next_nodes[2] = *next_expression;
+
+  return ast;
 }
- */
+
 node *parse_grouping(token **token_pointer) {
   expect_token_value(TOKEN_PUNCTUATION, '(', token_pointer);
   node *ast = parse_precedence(PRECEDENCE_ASSIGNMENT, token_pointer);
@@ -192,12 +206,12 @@ node *parse_grouping(token **token_pointer) {
 
 node *parse_precedence(precedence precedence, token **token_pointer) {
   token *current_token = peek_token(token_pointer);
-  node *ast = generate_node(NODE_NONE);
-  node *current_expression;
+  node *ast = create_node(NODE_NONE);
   node *last_expression;
+  node *current_expression;
 
   // Keep parsing equal or higher precedence values, or ';' is found.
-  // Example: 10 * !(false + false)
+  // Example: 10 * (1 + 1 + 1);
   // Parses 10 as number then parses (false + false) then ! then *
   while (precedence <= get_precedence(current_token->type)) {
     switch (current_token->type) {
@@ -207,24 +221,31 @@ node *parse_precedence(precedence precedence, token **token_pointer) {
       } else if (current_token->value[0] == '(') {
         current_expression = parse_grouping(token_pointer);
       }
+      break;
 
     case TOKEN_INT:
       current_expression = parse_number(token_pointer);
+      break;
 
     case TOKEN_PLUS:
     case TOKEN_MINUS:
     case TOKEN_STAR:
     case TOKEN_SLASH:
       current_expression = parse_binary(last_expression, token_pointer);
+      break;
 
     default:
       // TODO: Better error handling
-      printf("Error when parsing precedence: Unknown token %i", current_token->type);
+      printf("Error when parsing precedence: Unknown token %i",
+             current_token->type);
       return ast;
     }
+    current_token = peek_token(token_pointer);
     last_expression = current_expression;
-    vector_add(&ast.next_nodes, current_expression);
+    ast = last_expression;
   }
+
+  return ast;
 }
 
 // Wrapper for parse precedence
@@ -281,7 +302,7 @@ node *parse_block(token **token_pointer) {
   }
 
   token *current_token = peek_token(token_pointer);
-  node *ast = generate_node(NODE_END);
+  node *ast = create_node(NODE_END);
 
   switch (current_token->type) {
   case TOKEN_END:
@@ -320,7 +341,7 @@ node *parse_block(token **token_pointer) {
 //
 // Takes in tokens, outputs an Abstract Syntax Tree (AST)
 node *parser(token *tokens) {
-  node *ast = generate_node(NODE_START);
+  node *ast = create_node(NODE_START);
   // Pointer to pointer so we can store state of which token we're on
   token **token_pointer = &tokens;
 

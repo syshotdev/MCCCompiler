@@ -6,3 +6,7 @@ Series on building a compiler by Cobb Coding:
 https://www.youtube.com/watch?v=pqitDDFGc7I&list=PLRnI_2_ZWhtA_ZAzEa8uJF8wgGF0HjjEz
 C Vector Library by Mashpoe:
 https://github.com/Mashpoe/c-vector/tree/master
+An entire book on building a compiler:
+https://craftinginterpreters.com/scanning.html
+C Enum to String by https://www.reddit.com/user/SoulsBloodSausage/:
+https://www.reddit.com/r/C_Programming/comments/1f2rkvt/convert_c_enum_to_its_string_representation/
