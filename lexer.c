@@ -7,20 +7,24 @@
 #include <stdlib.h>
 #include <string.h>
 
-void advance(FILE *file) { fgetc(file); }
+const char *token_type_strings[] = {ITERATE_TOKENS_AND(GENERATE_STRING)};
 
+const char *token_type_to_string(token_type type) {
+  return enum_to_string(type, token_type_strings);
+}
+
+char pop_char(FILE *file) { return fgetc(file); }
 char peek_char(FILE *file) {
   char current = fgetc(file);
   ungetc(current, file);
   return current;
 }
-char pop_char(FILE *file) { return fgetc(file); }
 void return_char(char character, FILE *file) { ungetc(character, file); }
 
 bool match_char(char expected, FILE *file) {
   bool is_same = peek_char(file) == expected;
   if (is_same) {
-    advance(file);
+    pop_char(file);
   }
   return is_same;
 }
@@ -36,35 +40,45 @@ token *create_token(token_type type) {
 token *create_double(char expected, token_type once, token_type twice,
                      FILE *file) {
   if (match_char(expected, file)) {
-    return create_token(once);
-  } else {
     return create_token(twice);
+  } else {
+    return create_token(once);
   }
 }
+
+// Make a string till condition is false, at end finish string and do misc
+void collect_characters(token *token, bool (*condition)(char), FILE *file) {
+  char current = pop_char(file);
+  while (condition(current) && current != EOF) {
+    vector_add(&token->value, current);
+    current = pop_char(file);
+  }
+  // Add string ending notifier
+  vector_add(&token->value, '\0');
+  return_char(current, file);
+}
+
+bool not_quote(char c) { return c != '"'; }
 
 token *create_string(FILE *file) {
   token *string_token = create_token(TOKEN_STRING);
   vector_reserve(&string_token->value, 8);
 
-  char current = pop_char(file);
-  while (current != '"' && current != EOF) {
-    vector_add(&string_token->value, current);
-    current = pop_char(file);
-  }
+  // " was skipped from main loop
+  collect_characters(string_token, not_quote, file);
+  pop_char(file); // Remove extra "
 
   return string_token;
 }
+
+bool isdigit_wrapper(char c) { return isdigit((unsigned char)c) != 0; }
 
 token *create_number(char current, FILE *file) {
   token *number_token = create_token(TOKEN_NUMBER);
   vector_reserve(&number_token->value, 8);
 
-  while (isdigit(current) && current != EOF) {
-    vector_add(&number_token->value, current);
-    current = pop_char(file);
-  };
-  // Return character that is not number
   return_char(current, file);
+  collect_characters(number_token, isdigit_wrapper, file);
 
   return number_token;
 }
@@ -80,12 +94,8 @@ bool value_is(char *value, char *to_compare) {
 token *create_keyword(char current, FILE *file) {
   token *keyword_token = create_token(TOKEN_NAME);
 
-  while (is_valid_keyword_char(current) && current != EOF) {
-    vector_add(&keyword_token->value, current);
-    current = pop_char(file);
-  };
-  // Return character that is not letter
   return_char(current, file);
+  collect_characters(keyword_token, is_valid_keyword_char, file);
 
   char *value = keyword_token->value;
   token_type type;
@@ -157,9 +167,12 @@ token *lexer(FILE *file) {
   vector_reserve(&tokens, 16);
   token *current_token;
 
-  char current_char = ' ';
-  while (current_char != EOF) {
-    current_char = pop_char(file);
+  char current_char;
+  while (true) {
+    current_char = pop_char(file); // Peek char and let functions deal with it?
+    if (current_char == EOF) {
+      break;
+    }
     switch (current_char) {
     // Skip whitespace
     case ' ':
@@ -235,7 +248,7 @@ token *lexer(FILE *file) {
           if (current_char == '\n' || current_char == EOF) {
             break;
           }
-          advance(file);
+          pop_char(file);
         }
       } else {
         current_token = create_token(TOKEN_SLASH);
@@ -261,6 +274,9 @@ token *lexer(FILE *file) {
     case '.':
       current_token = create_token(TOKEN_DOT);
       break;
+    case ',':
+      current_token = create_token(TOKEN_COMMA);
+      break;
     case ';':
       current_token = create_token(TOKEN_SEMI_COLON);
       break;
@@ -269,7 +285,7 @@ token *lexer(FILE *file) {
       break;
     }
 
-    printf("What's inside: %i\n", current_token->type);
+    printf("What's inside: %s\n", token_type_to_string(current_token->type));
     vector_add(&tokens, *current_token);
   }
 

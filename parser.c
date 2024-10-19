@@ -1,75 +1,27 @@
+#include "parser.h"
 #include "c-vector/vec.h"
-#include "lexer.h"
 #include <stdio.h>
 #include <stdlib.h>
 
+const char *node_type_strings[] = {ITERATE_TOKENS_AND(GENERATE_STRING)};
+
+const char *node_type_to_string(node_type type) {
+  return enum_to_string(type, node_type_strings);
+}
+
 /*
  * The syntax function should take a look at the tree and figure out if it's
- * grammatically correct Semantic analyzation is checking if parameters have
+ * grammatically correct
+ *
+ * Semantic analyzation is checking if parameters have
  * the right types, variables are initialized, stuff like that.
  *
  */
 
-typedef enum {
-  NODE_START,
-  NODE_END,
-  NODE_NONE,
-
-  NODE_CALL_FUNCTION,
-  NODE_RETURN,
-
-  NODE_SEPARATOR,
-
-  NODE_POINTER,
-  NODE_TYPE,
-  NODE_VARIABLE,
-  NODE_NUMBER,
-  NODE_STRING,
-
-  NODE_EXPRESSION, // Expression = 12, a_number, 30+(10-a_number)
-  NODE_EQUATION, // 1+1, !false
-  NODE_ADD,
-  NODE_SUBTRACT,
-  NODE_MULTIPLY,
-  NODE_DIVIDE,
-
-  NODE_COMPARISON,
-  NODE_NOT,
-  NODE_AND,
-  NODE_OR,
-  NODE_XOR,
-
-  NODE_DECLARATION,
-  NODE_FUNCTION_DECLARATION,
-  NODE_PARAMETER,
-} node_type;
-
-typedef enum {
-  PRECEDENCE_NONE,
-  PRECEDENCE_ASSIGNMENT, // =
-  PRECEDENCE_OR,         // or
-  PRECEDENCE_AND,        // and
-  PRECEDENCE_EQUALITY,   // == !=
-  PRECEDENCE_COMPARISON, // < > <= >=
-  PRECEDENCE_TERM,       // + -
-  PRECEDENCE_FACTOR,     // * /
-  PRECEDENCE_UNARY,      // ! -
-  PRECEDENCE_CALL,       // . ()
-  PRECEDENCE_PRIMARY,
-} precedence;
-
-typedef struct node {
-  node_type type;
-  union {
-    struct node *next_nodes; // Always a vector!
-    char *data;       // Always a vector!
-  };
-} node;
-
 node *create_node(node_type type) {
   node *node = malloc(sizeof(node));
   node->type = type;
-  node->next_nodes = vector_create();
+  node->children = vector_create();
   return node;
 }
 
@@ -151,7 +103,7 @@ node *generate_ast(node *nodes) {
 node *parse_precedence(precedence precedence, token **token_pointer);
 
 node *parse_number(token **token_pointer) {
-  node *number_node = generate_node(NODE_LITERAL);
+  node *number_node = create_node(NODE_NUMBER);
   // Get value from that token that sent us here
   int value = atoi(pop_token(token_pointer)->value);
   // The data pointer of all nodes is vector so put the value inside the vector
@@ -188,19 +140,17 @@ node *parse_binary(node *last_expression, token **token_pointer) {
 
   node *ast = create_node(NODE_EQUATION);
   vector_reserve(&ast, 3);
-  // Man baby's first memory leak
-  // Idk how to free that "generate_node" one
-  ast->next_nodes[0] = *create_node(type);
-  ast->next_nodes[1] = *last_expression;
-  ast->next_nodes[2] = *next_expression;
+  ast->children[0] = *create_node(type);
+  ast->children[1] = *last_expression;
+  ast->children[2] = *next_expression;
 
   return ast;
 }
 
 node *parse_grouping(token **token_pointer) {
-  expect_token_value(TOKEN_PUNCTUATION, '(', token_pointer);
+  expect_token(TOKEN_LEFT_PARENTHESES, token_pointer);
   node *ast = parse_precedence(PRECEDENCE_ASSIGNMENT, token_pointer);
-  expect_token_value(TOKEN_PUNCTUATION, ')', token_pointer);
+  expect_token(TOKEN_RIGHT_PARENTHESES, token_pointer);
   return ast;
 }
 
@@ -215,16 +165,19 @@ node *parse_precedence(precedence precedence, token **token_pointer) {
   // Parses 10 as number then parses (false + false) then ! then *
   while (precedence <= get_precedence(current_token->type)) {
     switch (current_token->type) {
-    case TOKEN_PUNCTUATION:
-      if (current_token->value[0] == ';') {
-        return ast;
-      } else if (current_token->value[0] == '(') {
-        current_expression = parse_grouping(token_pointer);
-      }
+    case TOKEN_SEMI_COLON:
+      return ast;
+
+    case TOKEN_LEFT_PARENTHESES:
+      current_expression = parse_grouping(token_pointer);
       break;
 
-    case TOKEN_INT:
+    case TOKEN_NUMBER:
       current_expression = parse_number(token_pointer);
+      break;
+
+    case TOKEN_NAME:
+      // Check if variable name or function call
       break;
 
     case TOKEN_PLUS:
@@ -242,7 +195,7 @@ node *parse_precedence(precedence precedence, token **token_pointer) {
     }
     current_token = peek_token(token_pointer);
     last_expression = current_expression;
-    ast = last_expression;
+    ast = current_expression;
   }
 
   return ast;
@@ -250,48 +203,55 @@ node *parse_precedence(precedence precedence, token **token_pointer) {
 
 // Wrapper for parse precedence
 node *parse_expression(token **token_pointer) {
-  expect_token(TOKEN_EQUALS, token_pointer);
   return parse_precedence(PRECEDENCE_ASSIGNMENT, token_pointer);
 }
 
-node parse_declaration(token **token_pointer) {
-  expect_token(TOKEN_EQUALS, token_pointer);
-  parse_expression(token_pointer);
-}
-
-node parse_function(token **token_pointer) {}
+node *parse_function(token **token_pointer) { return create_node(NODE_NONE); }
 
 // Parse a type. Such as variable or function declaration.
 node *parse_type(token **token_pointer) {
-  /*
-   * The type of the declaration (like variable, function, parameter) requires
-   * going through type, pointer amount, then name.
-   */
-  node *ast;
-
   token *type = expect_token(TOKEN_TYPE, token_pointer);
-
   // Super messy. Calculates "*" amount
   int pointer_amount = 0;
   while (true) {
-    if (pop_token(token_pointer)->type != TOKEN_STAR) {
-      backtrack_token(token_pointer);
+    if (peek_token(token_pointer)->type != TOKEN_STAR) {
       break;
     }
+    // Pop * token
+    pop_token(token_pointer);
     pointer_amount++;
   }
-
   token *name = expect_token(TOKEN_NAME, token_pointer);
 
+  // Type of variable, pointers, name
+  //
+  // Since in C you can create your own types, it's impossible to know what
+  // types will exist at compile-time. I do not know how to fix this problem
+  // yet. Maybe a runtime vector of types with their contents, like int int
+  // token_type struct *next?
+  node *ast_identifier = create_node(type->value);
+  node *ast = create_node(NODE_NONE);
+  vector_reserve(&ast, 2);
+  ast->children[0] = *ast_identifier;
   token *current_token = peek_token(token_pointer);
-  if (current_token->type == TOKEN_EQUALS) {
-    parse_declaration(token_pointer);
-  } else if (current_token->type == TOKEN_PUNCTUATION) {
-    if (current_token->value[0] == '(') {
-      parse_function(token_pointer);
-    } else if (current_token->value[0] == ';') {
-    }
+  switch (current_token->type) {
+  case TOKEN_EQUALS:
+    expect_token(TOKEN_EQUALS, token_pointer);
+    ast->type = NODE_DECLARATION;
+    ast = parse_expression(token_pointer);
+    break;
+  case TOKEN_SEMI_COLON:
+    // Unassigned variable
+    break;
+  case TOKEN_LEFT_PARENTHESES:
+    ast = parse_function(token_pointer);
+    break;
+  default:
+    // Error
+    return ast;
   }
+
+  return ast;
 }
 
 // Parses a block of C tokens and outputs the block's AST reprisentation.
@@ -302,13 +262,14 @@ node *parse_block(token **token_pointer) {
   }
 
   token *current_token = peek_token(token_pointer);
-  node *ast = create_node(NODE_END);
+  node *ast;
 
   switch (current_token->type) {
   case TOKEN_END:
+    ast = create_node(NODE_END);
     return ast;
   case TOKEN_TYPE:
-    parse_type(token_pointer);
+    ast = parse_type(token_pointer);
     break;
   }
 }
@@ -316,6 +277,7 @@ node *parse_block(token **token_pointer) {
 // Questions for code style:
 //
 // What to return when parsing error? Do I exit?
+// In this specific situation, just output NODE_NONE or make NODE_ERROR.
 //
 // Do I pop the token, then give it to the function directly, along with the
 // current_token pointer?
@@ -344,9 +306,6 @@ node *parser(token *tokens) {
   node *ast = create_node(NODE_START);
   // Pointer to pointer so we can store state of which token we're on
   token **token_pointer = &tokens;
-
-  for (int i = 0; i < vector_size(tokens); i++) {
-  }
 
   return ast;
 }

@@ -1,6 +1,7 @@
 #include "c-vector/vec.h"
 #include <ctype.h>
 #include "lexer.h"
+#include "parser.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -26,10 +27,11 @@ int main(void) {
     printf("Couldn't find file: %s", file_name);
   }
   token *tokens = lexer(file);
-
-  for (size_t i = 0; i < vector_size(tokens); i++) {
+  printf("Tokens size: %ld\n", vector_size(tokens));
+  node *ast = parser(tokens);
+  /*for (size_t i = 0; i < vector_size(tokens); i++) {
     printf("%s\n", tokens[i].value);
-  }
+  }*/
 
   fclose(file);
 
