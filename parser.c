@@ -9,25 +9,19 @@ const char *node_type_to_string(node_type type) {
   return enum_to_string(type, node_type_strings);
 }
 
-/*
- * The syntax function should take a look at the tree and figure out if it's
- * grammatically correct
- *
- * Semantic analyzation is checking if parameters have
- * the right types, variables are initialized, stuff like that.
- *
- */
-
 node *create_node(node_type type) {
   node *node = malloc(sizeof(node));
   node->type = type;
-  node->children = vector_create();
   return node;
 }
 
 void advance_token(token **token_pointer) {
   // Pointer arithmetic to advance pointer by 1 token length
   *token_pointer += 1;
+}
+void return_token(token **token_pointer) {
+  // Pointer arithmetic to de-advance pointer by 1 token length
+  *token_pointer -= 1;
 }
 
 token *pop_token(token **token_pointer) {
@@ -48,55 +42,56 @@ bool is_at_end(token **token_pointer) {
 token *expect_token(token_type type, token **token_pointer) {
   token *token = pop_token(token_pointer);
   if (token->type != type) {
-    // TODO: Make the enums actually exist as words instead of compiler-time
-    // numbers
-    printf("Token given: %i \n Token expected: %i \n", token->type, type);
-    exit(1);
-  }
-  return token;
-}
-// Same thing as expect_token, but checks if value[0] == expected char
-token *expect_token_value(token_type type, char expected,
-                          token **token_pointer) {
-  token *token = pop_token(token_pointer);
-  // Token type or token value is not expected, send error
-  if (token->type != type || token->value[0] != expected) {
-    printf("Token given: %i \nToken expected: %i \nChar expected: %c\n",
-           token->type, type, expected);
-    exit(1);
+    printf("Token given: %s \n Token expected: %s \n",
+           token_type_to_string(token->type), token_type_to_string(type));
   }
   return token;
 }
 
-void syntax_analyzer() {}
-void semantic_analyzer() {}
-
-/*
- * int i = 1;
- *
- * TYPE -> NAME -> =, (), ,;
- *
- * = -> ASSIGN -> STATEMENT -> ;
- *
- * STATEMENT -> (LITERAL, VARIABLE, FUNCTION CALL, OPERATORS)... -> ;
- *
- * () -> FUNCTION -> FUNCTION PARAMETER -> ) -> BLOCK (IS EQUAL TO {})
- *
- * ,; -> UNASSIGNED VARIABLE OR FUNCTION PARAMETER
- *
- */
-
-/*
-node *generate_ast(node *nodes) {
+precedence get_precedence(token_type type) {
+  precedence precedence = PRECEDENCE_ASSIGNMENT;
+  switch (type) {
+  default:
+    precedence = PRECEDENCE_NONE;
+  case TOKEN_OR:
+    precedence = PRECEDENCE_OR;
+    break;
+  case TOKEN_AND:
+    precedence = PRECEDENCE_AND;
+    break;
+  case TOKEN_EQUALS_EQUALS:
+  case TOKEN_NOT_EQUALS:
+    precedence = PRECEDENCE_EQUALITY;
+    break;
+  case TOKEN_LESS_THAN:
+  case TOKEN_GREATER_THAN:
+  case TOKEN_LESS_THAN_EQUALS:
+  case TOKEN_GREATER_THAN_EQUALS:
+    precedence = PRECEDENCE_COMPARISON;
+    break;
+  case TOKEN_PLUS:
+  case TOKEN_MINUS:
+    precedence = PRECEDENCE_TERM;
+    break;
+  case TOKEN_STAR:
+  case TOKEN_SLASH:
+    precedence = PRECEDENCE_FACTOR;
+    break;
+  case TOKEN_NOT:
+    precedence = PRECEDENCE_UNARY;
+    break;
+  case TOKEN_DOT:
+  case TOKEN_LEFT_PARENTHESES:
+    precedence = PRECEDENCE_CALL;
+    break;
+  case TOKEN_NAME:
+  case TOKEN_STRING:
+  case TOKEN_NUMBER:
+    precedence = PRECEDENCE_PRIMARY;
+    break;
+  }
+  return precedence;
 }
-*/
-
-/*
- * How do I generate the AST? I can't just add every declaration to the global
- * space because scope exists. I feel that there's a recursive way to take a
- * block of tokens, turn it into a plausible tree, and then add it to the
- * greater bit of the abstract syntax tree.
- */
 
 // Prototype because it complains about multiple function definitions (It's used
 // before it's defined).
@@ -106,13 +101,17 @@ node *parse_number(token **token_pointer) {
   node *number_node = create_node(NODE_NUMBER);
   // Get value from that token that sent us here
   int value = atoi(pop_token(token_pointer)->value);
-  // The data pointer of all nodes is vector so put the value inside the vector
   vector_add(&number_node->data, value);
 
   return number_node;
 }
 
-node *parse_unary(token **token_pointer) {}
+node *parse_grouping(token **token_pointer) {
+  expect_token(TOKEN_LEFT_PARENTHESES, token_pointer);
+  node *ast = parse_precedence(PRECEDENCE_ASSIGNMENT, token_pointer);
+  expect_token(TOKEN_RIGHT_PARENTHESES, token_pointer);
+  return ast;
+}
 
 node *parse_binary(node *last_expression, token **token_pointer) {
   token *operator_token = pop_token(token_pointer);
@@ -136,10 +135,12 @@ node *parse_binary(node *last_expression, token **token_pointer) {
   default:
     printf("Error in parse binary");
     exit(1);
+    break;
   }
 
   node *ast = create_node(NODE_EQUATION);
-  vector_reserve(&ast, 3);
+  ast->children = vector_create();
+  vector_reserve(&ast->children, 3);
   ast->children[0] = *create_node(type);
   ast->children[1] = *last_expression;
   ast->children[2] = *next_expression;
@@ -147,22 +148,57 @@ node *parse_binary(node *last_expression, token **token_pointer) {
   return ast;
 }
 
-node *parse_grouping(token **token_pointer) {
-  expect_token(TOKEN_LEFT_PARENTHESES, token_pointer);
-  node *ast = parse_precedence(PRECEDENCE_ASSIGNMENT, token_pointer);
-  expect_token(TOKEN_RIGHT_PARENTHESES, token_pointer);
+node *parse_unary(token **token_pointer) {
+  token *operator_token = pop_token(token_pointer);
+  node *expression = parse_precedence(PRECEDENCE_UNARY, token_pointer);
+
+  node_type type;
+  switch (operator_token->type) {
+  // +NUMBER does nothing
+  case TOKEN_PLUS:
+    return expression;
+    break;
+  case TOKEN_MINUS:
+    type = NODE_NEGATE;
+    break;
+  case TOKEN_NOT:
+    type = NODE_NOT;
+    break;
+  default:
+    printf("Error in parse unary");
+    exit(1);
+    break;
+  }
+
+  node *ast = create_node(NODE_EQUATION);
+  ast->children = vector_create();
+  vector_reserve(&ast->children, 2);
+  ast->children[0] = *create_node(type);
+  ast->children[1] = *expression;
+
   return ast;
 }
 
 node *parse_precedence(precedence precedence, token **token_pointer) {
   token *current_token = peek_token(token_pointer);
-  node *ast = create_node(NODE_NONE);
+
+  // Unary operators
+  switch (current_token->type) {
+  default:
+    break;
+  case TOKEN_MINUS:
+  case TOKEN_PLUS:
+  case TOKEN_NOT:
+    return parse_unary(token_pointer);
+    break;
+  }
+
+  node *ast;
   node *last_expression;
   node *current_expression;
 
   // Keep parsing equal or higher precedence values, or ';' is found.
-  // Example: 10 * (1 + 1 + 1);
-  // Parses 10 as number then parses (false + false) then ! then *
+  // Example: -12 - -6 * (2 + 3);
   while (precedence <= get_precedence(current_token->type)) {
     switch (current_token->type) {
     case TOKEN_SEMI_COLON:
@@ -189,12 +225,15 @@ node *parse_precedence(precedence precedence, token **token_pointer) {
 
     default:
       // TODO: Better error handling
-      printf("Error when parsing precedence: Unknown token %i",
-             current_token->type);
+      printf("Error when parsing precedence: Unknown token %s",
+             token_type_to_string(current_token->type));
       return ast;
     }
     current_token = peek_token(token_pointer);
     last_expression = current_expression;
+
+    // Alright, Idk if this is even the way to do it. Refactor a lot of this and
+    // get it working!
     ast = current_expression;
   }
 
@@ -206,44 +245,51 @@ node *parse_expression(token **token_pointer) {
   return parse_precedence(PRECEDENCE_ASSIGNMENT, token_pointer);
 }
 
-node *parse_function(token **token_pointer) { return create_node(NODE_NONE); }
-
-// Parse a type. Such as variable or function declaration.
-node *parse_type(token **token_pointer) {
-  token *type = expect_token(TOKEN_TYPE, token_pointer);
-  // Super messy. Calculates "*" amount
-  int pointer_amount = 0;
+int how_many_in_a_row(token_type type, token **token_pointer) {
+  int number = 0;
   while (true) {
-    if (peek_token(token_pointer)->type != TOKEN_STAR) {
+    if (peek_token(token_pointer)->type != type) {
       break;
     }
     // Pop * token
     pop_token(token_pointer);
-    pointer_amount++;
+    number++;
   }
+  return number;
+}
+
+// Parse something like "a = 12 + (9 * 20);"
+node *parse_variable_declaration(token **token_pointer) {
+  token *name = expect_token(TOKEN_NAME, token_pointer);
+  expect_token(TOKEN_EQUALS, token_pointer);
+  node *ast = create_node(NODE_VARIABLE_DECLARATION);
+  parse_expression(token_pointer);
+}
+
+// int sum_ints(int *array) {...}
+node *parse_function(token **token_pointer) { return create_node(NODE_NONE); }
+
+// Parse a variable or function declaration.
+node *parse_type(token **token_pointer) {
+  token *type = expect_token(TOKEN_NAME, token_pointer);
+  int pointer_amount = how_many_in_a_row(TOKEN_STAR, token_pointer);
   token *name = expect_token(TOKEN_NAME, token_pointer);
 
-  // Type of variable, pointers, name
-  //
-  // Since in C you can create your own types, it's impossible to know what
-  // types will exist at compile-time. I do not know how to fix this problem
-  // yet. Maybe a runtime vector of types with their contents, like int int
-  // token_type struct *next?
-  node *ast_identifier = create_node(type->value);
-  node *ast = create_node(NODE_NONE);
-  vector_reserve(&ast, 2);
-  ast->children[0] = *ast_identifier;
   token *current_token = peek_token(token_pointer);
+  node *ast = create_node(NODE_NONE);
+
   switch (current_token->type) {
   case TOKEN_EQUALS:
     expect_token(TOKEN_EQUALS, token_pointer);
-    ast->type = NODE_DECLARATION;
-    ast = parse_expression(token_pointer);
+    ast->type = NODE_VARIABLE_DECLARATION;
+    vector_free(ast->children);
+    ast->children = parse_expression(token_pointer);
     break;
   case TOKEN_SEMI_COLON:
-    // Unassigned variable
+    printf("Error in parse type, didn't implement un-initialized variables\n");
     break;
   case TOKEN_LEFT_PARENTHESES:
+    ast->type = NODE_FUNCTION_DECLARATION;
     ast = parse_function(token_pointer);
     break;
   default:
@@ -254,22 +300,42 @@ node *parse_type(token **token_pointer) {
   return ast;
 }
 
+// Checks if has two name tokens in a row, example:
+// int variable = ...
+bool is_token_type(token **token_pointer) {
+  pop_token(token_pointer);
+  token *current_token = peek_token(token_pointer);
+
+  bool is_token_type = false;
+  if (current_token->type == TOKEN_NAME) {
+    is_token_type = true;
+  }
+  return_token(token_pointer);
+  return is_token_type;
+}
+
 // Parses a block of C tokens and outputs the block's AST reprisentation.
 node *parse_block(token **token_pointer) {
-  // End of token stream? NULL.
-  if (is_at_end(token_pointer)) {
-    return NULL;
-  }
-
   token *current_token = peek_token(token_pointer);
   node *ast;
 
   switch (current_token->type) {
+  default:
+    printf("Error in parse block, unknown type");
+    exit(1);
+    break;
+
+  case TOKEN_NAME:
+    if (is_token_type(token_pointer)) {
+      ast = parse_type(token_pointer);
+    } else {
+      ast = parse_variable_declaration(token_pointer);
+    }
+    break;
+
   case TOKEN_END:
     ast = create_node(NODE_END);
     return ast;
-  case TOKEN_TYPE:
-    ast = parse_type(token_pointer);
     break;
   }
 }
@@ -278,9 +344,6 @@ node *parse_block(token **token_pointer) {
 //
 // What to return when parsing error? Do I exit?
 // In this specific situation, just output NODE_NONE or make NODE_ERROR.
-//
-// Do I pop the token, then give it to the function directly, along with the
-// current_token pointer?
 //
 // Yk how enums have either super specific names (TOKEN_LEFT_PARENTHESES) or
 // just broad terms (TOKEN_PUNCTUATION)? Which is better? Broad terms gonna be
@@ -302,10 +365,19 @@ node *parse_block(token **token_pointer) {
 // but I want to have a standard.
 //
 // Takes in tokens, outputs an Abstract Syntax Tree (AST)
+
+void print_ast(node *ast, int indent_level) {
+  printf("%s", node_type_to_string(ast->type));
+  for(int i = 0; i < vector_size(ast->children); i++) {
+    print_ast(&ast->children[i], indent_level);
+  }
+}
 node *parser(token *tokens) {
-  node *ast = create_node(NODE_START);
   // Pointer to pointer so we can store state of which token we're on
   token **token_pointer = &tokens;
+  node *ast = parse_block(token_pointer);
+
+  print_ast(ast, 0);
 
   return ast;
 }

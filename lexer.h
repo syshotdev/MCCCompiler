@@ -5,10 +5,6 @@
 
 #define ITERATE_TOKENS_AND(X)                                                  \
   X(TOKEN_END)                                                                 \
-  X(TOKEN_BOOL)                                                                \
-  X(TOKEN_INT)                                                                 \
-  X(TOKEN_CHAR)                                                                \
-  X(TOKEN_VOID)                                                                \
                                                                                \
   X(TOKEN_VOLATILE)                                                            \
   X(TOKEN_UNSIGNED)                                                            \
@@ -42,7 +38,6 @@
                                                                                \
   X(TOKEN_NUMBER)                                                              \
   X(TOKEN_STRING)                                                              \
-  X(TOKEN_TYPE)                                                                \
   X(TOKEN_NAME)                                                                \
                                                                                \
   X(TOKEN_EQUALS)                                                              \

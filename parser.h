@@ -1,5 +1,6 @@
 #ifndef parser_h
 #define parser_h
+#include "c-hashmap/hashmap.h"
 #include "enum_utilities.h"
 #include "lexer.h"
 #include <stdio.h>
@@ -20,7 +21,6 @@
   X(NODE_NUMBER)                                                               \
   X(NODE_STRING)                                                               \
                                                                                \
-  X(NODE_EXPRESSION)                                                           \
   X(NODE_EQUATION)                                                             \
   X(NODE_ADD)                                                                  \
   X(NODE_SUBTRACT)                                                             \
@@ -28,12 +28,13 @@
   X(NODE_DIVIDE)                                                               \
                                                                                \
   X(NODE_COMPARISON)                                                           \
+  X(NODE_NEGATE)                                                               \
   X(NODE_NOT)                                                                  \
   X(NODE_AND)                                                                  \
   X(NODE_OR)                                                                   \
   X(NODE_XOR)                                                                  \
                                                                                \
-  X(NODE_DECLARATION)                                                          \
+  X(NODE_VARIABLE_DECLARATION)                                                          \
   X(NODE_FUNCTION_DECLARATION)                                                 \
   X(NODE_PARAMETER)
 
@@ -64,38 +65,27 @@ typedef struct node {
   };
 } node;
 
-
-typedef enum {
-  TYPE_INT,
-  TYPE_STRUCT,
-  TYPE_ENUM,
-} base_data_type;
-
-// Literally types like int or char or struct node
+// ALL OF THESE WILL GO INTO NEXT COMPILATION STEP
+// Literally types like int or char* or struct node
 typedef struct data_type {
-  base_data_type type;
-  union {
-    struct data_type *children; // Always a vector!
-    char *data;                 // Always a vector!
-  };
+  int size_bytes;
+  struct data_type *children; // Always a vector!
 } data_type;
 
 typedef struct {
-  char *name; // Always a vector!
+  data_type type;
+  int pointers; // Is this pointer, if so, how much
 } variable;
 
 typedef struct {
-  char *name; // Always a vector!
-  data_type *parameters; // Always a vector!
+  data_type *parameters;  // Always a vector!
   data_type *return_type; // Always a vector!
 } function;
 
-typedef void* hashmap;
-
 typedef struct {
-  hashmap data_types; // PLACEHOLDER HASHMAPS
-  hashmap variables;
-  hashmap functions;
+  hashmap *data_types;
+  hashmap *variables;
+  hashmap *functions;
   node *ast;
 } ast;
 
