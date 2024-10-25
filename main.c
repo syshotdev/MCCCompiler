@@ -1,7 +1,7 @@
 #include "c-vector/vec.h"
-#include <ctype.h>
 #include "lexer.h"
 #include "parser.h"
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -15,7 +15,6 @@
  * Be able to tokenize/lex/use standard C libraries
  */
 
-
 // I think no memory leaks or segmentation faults. Good luck!
 int main(void) {
   char file_name[] = "test.mcc";
@@ -23,12 +22,11 @@ int main(void) {
   FILE *file;
   file = fopen("test.mcc", "r");
 
-  if(!file){
+  if (!file) {
     printf("Couldn't find file: %s", file_name);
   }
   token *tokens = lexer(file);
-  printf("Tokens size: %ld\n", vector_size(tokens));
-  node *ast = parser(tokens);
+  parser(tokens);
   /*for (size_t i = 0; i < vector_size(tokens); i++) {
     printf("%s\n", tokens[i].value);
   }*/
@@ -41,20 +39,23 @@ int main(void) {
 /*
  * Steps to convert C program to machine code:
  *
- * Lexer - Turns all words and characters into tokens, such as VARIABLE or PUNCTUATOR
- * Preprocesser - Removes comments, replaces macros with actual code
+ * Lexer - Turns all words and characters into tokens, such as VARIABLE or
+ * PUNCTUATOR Preprocesser - Removes comments, replaces macros with actual code
  *
- * AST Generator - Goes through all the tokens and creates a tree-like structure full of nodes
- * Syntax Analyzer - Checks (Via tree) if stuff like quotes are ever closed, and if keywords are used correctly
- * Semantics Analyzer - Is this variable ever assigned? Valid dereference here? Valid pointer to int cast?
+ * AST Generator - Goes through all the tokens and creates a tree-like structure
+ * full of nodes Syntax Analyzer - Checks (Via tree) if stuff like quotes are
+ * ever closed, and if keywords are used correctly Semantics Analyzer - Is this
+ * variable ever assigned? Valid dereference here? Valid pointer to int cast?
  *
- * Code Generator - Turn the Abstract Syntax Tree into assembly (I actually have no idea what happens here)
- * Code Optimizer - Make code faster via speedup tricks??? (Neither this one)
+ * Code Generator - Turn the Abstract Syntax Tree into assembly (I actually have
+ * no idea what happens here) Code Optimizer - Make code faster via speedup
+ * tricks??? (Neither this one)
  *
  *
- * Linker - Put all of the libraries codes into executable (Preprocessor but for libraries???)
- * Assembly to Machine Code - Convert all of the assembly operations into 1s and 0s
- * Turn into minecraft barrels - Create schematic of barrels to put into ROM
+ * Linker - Put all of the libraries codes into executable (Preprocessor but for
+ * libraries???) Assembly to Machine Code - Convert all of the assembly
+ * operations into 1s and 0s Turn into minecraft barrels - Create schematic of
+ * barrels to put into ROM
  *
  * Execute - Run the program on the Minecraft computer and wow it's working!!!
  * Debug - Spoiler alert: It did not work

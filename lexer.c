@@ -99,15 +99,7 @@ token *create_keyword(char current, FILE *file) {
 
   char *value = keyword_token->value;
   token_type type;
-  if (value_is(value, "bool")) {
-    type = TOKEN_BOOL;
-  } else if (value_is(value, "int")) {
-    type = TOKEN_INT;
-  } else if (value_is(value, "char")) {
-    type = TOKEN_CHAR;
-  } else if (value_is(value, "void")) {
-    type = TOKEN_VOID;
-  } else if (value_is(value, "volatile")) {
+  if (value_is(value, "volatile")) {
     type = TOKEN_VOLATILE;
   } else if (value_is(value, "unsigned")) {
     type = TOKEN_UNSIGNED;

@@ -8,8 +8,6 @@
 #define GENERATE_STRING(STRING) #STRING,
 
 // Generic function that gets a string value from enum value
-const char *enum_to_string(int enum_value, const char *enum_strings[]) {
-    return enum_strings[enum_value];
-}
+const char *enum_to_string(int enum_value, const char *enum_strings[]);
 
 #endif

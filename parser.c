@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-const char *node_type_strings[] = {ITERATE_TOKENS_AND(GENERATE_STRING)};
+const char *node_type_strings[] = {ITERATE_NODES_AND(GENERATE_STRING)};
 
 const char *node_type_to_string(node_type type) {
   return enum_to_string(type, node_type_strings);
@@ -12,6 +12,19 @@ const char *node_type_to_string(node_type type) {
 node *create_node(node_type type) {
   node *node = malloc(sizeof(node));
   node->type = type;
+  node->children = vector_create();
+  node->data = vector_create();
+  return node;
+}
+
+// Same thing as create_node but *data dereferenced and put into new vector
+node *create_node_leaf(node_type type, char *data) {
+  node *node = malloc(sizeof(node));
+  node->type = type;
+  node->children = vector_create();
+  node->data = vector_create();
+  // Bug here. Add entire vector lol
+  vector_add(&node->data, *data);
   return node;
 }
 
@@ -31,7 +44,7 @@ token *pop_token(token **token_pointer) {
 }
 
 token *peek_token(token **token_pointer) {
-  token *token = &(*token_pointer[1]);
+  token *token = &(**token_pointer);
   return token;
 }
 
@@ -53,6 +66,7 @@ precedence get_precedence(token_type type) {
   switch (type) {
   default:
     precedence = PRECEDENCE_NONE;
+    break;
   case TOKEN_OR:
     precedence = PRECEDENCE_OR;
     break;
@@ -139,11 +153,10 @@ node *parse_binary(node *last_expression, token **token_pointer) {
   }
 
   node *ast = create_node(NODE_EQUATION);
-  ast->children = vector_create();
   vector_reserve(&ast->children, 3);
-  ast->children[0] = *create_node(type);
-  ast->children[1] = *last_expression;
-  ast->children[2] = *next_expression;
+  vector_add(&ast->children, *create_node(type));
+  vector_add(&ast->children, *last_expression);
+  vector_add(&ast->children, *next_expression);
 
   return ast;
 }
@@ -173,8 +186,8 @@ node *parse_unary(token **token_pointer) {
   node *ast = create_node(NODE_EQUATION);
   ast->children = vector_create();
   vector_reserve(&ast->children, 2);
-  ast->children[0] = *create_node(type);
-  ast->children[1] = *expression;
+  vector_add(&ast->children, *create_node(type));
+  vector_add(&ast->children, *expression);
 
   return ast;
 }
@@ -264,6 +277,7 @@ node *parse_variable_declaration(token **token_pointer) {
   expect_token(TOKEN_EQUALS, token_pointer);
   node *ast = create_node(NODE_VARIABLE_DECLARATION);
   parse_expression(token_pointer);
+  return ast;
 }
 
 // int sum_ints(int *array) {...}
@@ -277,13 +291,23 @@ node *parse_type(token **token_pointer) {
 
   token *current_token = peek_token(token_pointer);
   node *ast = create_node(NODE_NONE);
+  vector_reserve(&ast->children, 4);
+
+  // Oh man so messy
+  node *node_type = create_node_leaf(NODE_TYPE, type->value);
+  node *node_pointer =
+      create_node_leaf(NODE_POINTER, (char *)(&pointer_amount));
+  node *node_variable = create_node_leaf(NODE_VARIABLE, name->value);
+
+  vector_add(&ast->children, *node_type);
+  vector_add(&ast->children, *node_pointer);
+  vector_add(&ast->children, *node_variable);
 
   switch (current_token->type) {
   case TOKEN_EQUALS:
     expect_token(TOKEN_EQUALS, token_pointer);
     ast->type = NODE_VARIABLE_DECLARATION;
-    vector_free(ast->children);
-    ast->children = parse_expression(token_pointer);
+    vector_add(&ast->children, *parse_expression(token_pointer));
     break;
   case TOKEN_SEMI_COLON:
     printf("Error in parse type, didn't implement un-initialized variables\n");
@@ -319,9 +343,13 @@ node *parse_block(token **token_pointer) {
   token *current_token = peek_token(token_pointer);
   node *ast;
 
+  //printf("Current token: '%s'\n",
+  //         token_type_to_string(current_token->type));
+
   switch (current_token->type) {
   default:
-    printf("Error in parse block, unknown type");
+    //printf("Error in parse block, unknown type '%s'\n",
+    //       token_type_to_string(current_token->type));
     exit(1);
     break;
 
@@ -335,9 +363,9 @@ node *parse_block(token **token_pointer) {
 
   case TOKEN_END:
     ast = create_node(NODE_END);
-    return ast;
     break;
   }
+  return ast;
 }
 
 // Questions for code style:
@@ -367,11 +395,19 @@ node *parse_block(token **token_pointer) {
 // Takes in tokens, outputs an Abstract Syntax Tree (AST)
 
 void print_ast(node *ast, int indent_level) {
-  printf("%s", node_type_to_string(ast->type));
-  for(int i = 0; i < vector_size(ast->children); i++) {
-    print_ast(&ast->children[i], indent_level);
+  // Generate indents
+  char *spaces = malloc(indent_level * sizeof(char));
+  for (int i = 0; i < indent_level; i++) {
+    spaces[i] = ' ';
+  }
+
+  // Print out this node
+  printf("%s%s\n", spaces, node_type_to_string(ast->type));
+  for (int i = 0; i < vector_size(ast->children); i++) {
+    print_ast(&ast->children[i], indent_level + 1);
   }
 }
+
 node *parser(token *tokens) {
   // Pointer to pointer so we can store state of which token we're on
   token **token_pointer = &tokens;

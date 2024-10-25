@@ -34,7 +34,7 @@
   X(NODE_OR)                                                                   \
   X(NODE_XOR)                                                                  \
                                                                                \
-  X(NODE_VARIABLE_DECLARATION)                                                          \
+  X(NODE_VARIABLE_DECLARATION)                                                 \
   X(NODE_FUNCTION_DECLARATION)                                                 \
   X(NODE_PARAMETER)
 
@@ -59,14 +59,13 @@ typedef enum {
 
 typedef struct node {
   node_type type;
-  union {
-    struct node *children; // Always a vector!
-    char *data;            // Always a vector!
-  };
+  struct node *children; // Always a vector!
+  char *data;            // Always a vector!
 } node;
 
 // ALL OF THESE WILL GO INTO NEXT COMPILATION STEP
 // Literally types like int or char* or struct node
+/*
 typedef struct data_type {
   int size_bytes;
   struct data_type *children; // Always a vector!
@@ -87,7 +86,7 @@ typedef struct {
   hashmap *variables;
   hashmap *functions;
   node *ast;
-} ast;
+} ast; */
 
 node *parser(token *tokens);
 
