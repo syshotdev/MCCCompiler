@@ -17,19 +17,16 @@
 
 // I think no memory leaks or segmentation faults. Good luck!
 int main(void) {
-  char file_name[] = "test.mcc";
+  char file_name[] = "test/assignment.c";
 
   FILE *file;
-  file = fopen("test.mcc", "r");
+  file = fopen(file_name, "r");
 
   if (!file) {
     printf("Couldn't find file: %s", file_name);
   }
   token *tokens = lexer(file);
   parser(tokens);
-  /*for (size_t i = 0; i < vector_size(tokens); i++) {
-    printf("%s\n", tokens[i].value);
-  }*/
 
   fclose(file);
 

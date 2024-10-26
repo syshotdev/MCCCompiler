@@ -18,7 +18,7 @@ node *create_node(node_type type) {
 }
 
 // Same thing as create_node but *data dereferenced and put into new vector
-node *create_node_leaf(node_type type, char *data) {
+node *create_node_with_data(node_type type, char *data) {
   node *node = malloc(sizeof(node));
   node->type = type;
   node->children = vector_create();
@@ -294,10 +294,10 @@ node *parse_type(token **token_pointer) {
   vector_reserve(&ast->children, 4);
 
   // Oh man so messy
-  node *node_type = create_node_leaf(NODE_TYPE, type->value);
+  node *node_type = create_node_with_data(NODE_TYPE, type->value);
   node *node_pointer =
-      create_node_leaf(NODE_POINTER, (char *)(&pointer_amount));
-  node *node_variable = create_node_leaf(NODE_VARIABLE, name->value);
+      create_node_with_data(NODE_POINTER, (char *)(&pointer_amount));
+  node *node_variable = create_node_with_data(NODE_VARIABLE, name->value);
 
   vector_add(&ast->children, *node_type);
   vector_add(&ast->children, *node_pointer);
@@ -392,7 +392,6 @@ node *parse_block(token **token_pointer) {
 // calling it current_token, or token, or ast(abstract syntax tree), or node,
 // but I want to have a standard.
 //
-// Takes in tokens, outputs an Abstract Syntax Tree (AST)
 
 void print_ast(node *ast, int indent_level) {
   // Generate indents
@@ -406,8 +405,11 @@ void print_ast(node *ast, int indent_level) {
   for (int i = 0; i < vector_size(ast->children); i++) {
     print_ast(&ast->children[i], indent_level + 1);
   }
+
+  // TODO: print out the value of this node
 }
 
+// Takes in tokens, outputs an Abstract Syntax Tree (AST)
 node *parser(token *tokens) {
   // Pointer to pointer so we can store state of which token we're on
   token **token_pointer = &tokens;

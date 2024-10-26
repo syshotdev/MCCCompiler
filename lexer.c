@@ -13,20 +13,49 @@ const char *token_type_to_string(token_type type) {
   return enum_to_string(type, token_type_strings);
 }
 
+// Pop the next character
 char pop_char(FILE *file) { return fgetc(file); }
+
+// Get the next character without advancing
 char peek_char(FILE *file) {
   char current = fgetc(file);
   ungetc(current, file);
   return current;
 }
-void return_char(char character, FILE *file) { ungetc(character, file); }
 
+// Return whether the next character == expected, and if expected pop char
 bool match_char(char expected, FILE *file) {
   bool is_same = peek_char(file) == expected;
   if (is_same) {
     pop_char(file);
   }
   return is_same;
+}
+
+// Go backwards in characters
+void return_char(char character, FILE *file) { ungetc(character, file); }
+
+// Not implemented yet. For when I build my own standard library
+void advance_char(FILE file);
+
+// Advance till a specific string of characters is found
+void advance_till(char terminating_string[], FILE *file) {
+  char *current_chars = vector_create();
+  int terminating_string_length = strlen(terminating_string);
+  vector_reserve(&current_chars, terminating_string_length);
+  while (true) {
+    char current_char = pop_char(file);
+
+    if ((int)vector_size(current_chars) == terminating_string_length) {
+      vector_remove(&current_chars, 0);
+    }
+    vector_add(&current_chars, current_char);
+
+    bool is_terminating_string = strcmp(current_chars, terminating_string) == 0;
+    if (is_terminating_string || EOF) {
+      return;
+    }
+  }
 }
 
 token *create_token(token_type type) {
@@ -53,9 +82,10 @@ void collect_characters(token *token, bool (*condition)(char), FILE *file) {
     vector_add(&token->value, current);
     current = pop_char(file);
   }
+  // Return consumed char
+  return_char(current, file);
   // Add string ending notifier
   vector_add(&token->value, '\0');
-  return_char(current, file);
 }
 
 bool not_quote(char c) { return c != '"'; }
@@ -87,6 +117,8 @@ token *create_number(char current, FILE *file) {
 bool is_valid_keyword_char(char to_check) {
   return isalpha(to_check) || isdigit(to_check) || to_check == '_';
 }
+
+// More readable version of strcmp
 bool value_is(char *value, char *to_compare) {
   return strcmp(value, to_compare) == 0;
 }
@@ -99,6 +131,8 @@ token *create_keyword(char current, FILE *file) {
 
   char *value = keyword_token->value;
   token_type type;
+
+  // TODO: Turn this into hashmap (or switch)
   if (value_is(value, "volatile")) {
     type = TOKEN_VOLATILE;
   } else if (value_is(value, "unsigned")) {
@@ -155,13 +189,15 @@ token *create_keyword(char current, FILE *file) {
 }
 
 token *lexer(FILE *file) {
+  // Make a vector of pointers so I can avoid memory leaks where I copy
+  // dereferenced token struct and leak the one pointed to
   token *tokens = vector_create();
   vector_reserve(&tokens, 16);
   token *current_token;
 
   char current_char;
   while (true) {
-    current_char = pop_char(file); // Peek char and let functions deal with it?
+    current_char = pop_char(file);
     if (current_char == EOF) {
       break;
     }
@@ -233,17 +269,19 @@ token *lexer(FILE *file) {
     case '*':
       current_token = create_token(TOKEN_STAR);
       break;
-    case '/': // If '//', do comment
-      if (peek_char(file) == '/') {
-        // Comment
-        while (true) {
-          if (current_char == '\n' || current_char == EOF) {
-            break;
-          }
-          pop_char(file);
-        }
-      } else {
+    case '/':
+      switch (peek_char(file)) {
+      case '/':
+        pop_char(file);
+        advance_till("\n", file);
+        break;
+      case '*':
+        pop_char(file);
+        advance_till("*/", file);
+        break;
+      default:
         current_token = create_token(TOKEN_SLASH);
+        break;
       }
       break;
     case '%':
@@ -256,6 +294,12 @@ token *lexer(FILE *file) {
       break;
     case ')':
       current_token = create_token(TOKEN_RIGHT_PARENTHESES);
+      break;
+    case '[':
+      current_token = create_token(TOKEN_LEFT_BRACKET);
+      break;
+    case ']':
+      current_token = create_token(TOKEN_RIGHT_BRACKET);
       break;
     case '{':
       current_token = create_token(TOKEN_LEFT_BRACKET);
