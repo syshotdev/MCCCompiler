@@ -1,5 +1,6 @@
 #ifndef lexer_h
 #define lexer_h
+#include "c-vector/vec.h"
 #include "enum_utilities.h"
 #include <stdio.h>
 
@@ -75,14 +76,14 @@
 
 typedef enum { ITERATE_TOKENS_AND(GENERATE_ENUM) } token_type;
 
+typedef struct {
+  token_type type;
+  char_vector value;
+} token;
+
 extern const char *token_type_strings[];
 const char *token_type_to_string(token_type type);
 
-typedef struct {
-  token_type type;
-  char *value; // Always a vector!
-} token;
-
-token *lexer(FILE *file);
+token *lexer(char_vector chars);
 
 #endif

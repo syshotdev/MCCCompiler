@@ -1,8 +1,6 @@
-// Inputs = c source file, outputs = tokens like TOKEN_EQUALS or TOKEN_STRUCT
-// Also TODO: Lexer, Preprocessor, Parser, Code_Analyzer.c files
-
+// Inputs = c source char_pointer, outputs = tokens like TOKEN_EQUALS or
+// TOKEN_STRUCT Also TODO: Lexer, Preprocessor, Parser, Code_Analyzer.c
 #include "lexer.h"
-#include "c-vector/vec.h"
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,38 +11,43 @@ const char *token_type_to_string(token_type type) {
   return enum_to_string(type, token_type_strings);
 }
 
-// Pop the next character
-char pop_char(FILE *file) { return fgetc(file); }
+// Not implemented yet. For when I build my own standard library
+void advance_char(char **char_pointer) {
+  // Pointer arithmetic to advance pointer by 1 char length
+  *char_pointer += 1;
+}
+void return_char(char **char_pointer) {
+  // Pointer arithmetic to de-advance pointer by 1 char length
+  *char_pointer -= 1;
+}
 
-// Get the next character without advancing
-char peek_char(FILE *file) {
-  char current = fgetc(file);
-  ungetc(current, file);
-  return current;
+char pop_char(char **char_pointer) {
+  char current_char = **char_pointer;
+  advance_char(char_pointer);
+  return current_char;
+}
+
+char peek_char(char **char_pointer) {
+  char current_char = **char_pointer;
+  return current_char;
 }
 
 // Return whether the next character == expected, and if expected pop char
-bool match_char(char expected, FILE *file) {
-  bool is_same = peek_char(file) == expected;
+bool match_char(char expected, char **char_pointer) {
+  bool is_same = peek_char(char_pointer) == expected;
   if (is_same) {
-    pop_char(file);
+    advance_char(char_pointer);
   }
   return is_same;
 }
 
-// Go backwards in characters
-void return_char(char character, FILE *file) { ungetc(character, file); }
-
-// Not implemented yet. For when I build my own standard library
-void advance_char(FILE file);
-
 // Advance till a specific string of characters is found
-void advance_till(char terminating_string[], FILE *file) {
-  char *current_chars = vector_create();
+void advance_till(char terminating_string[], char **char_pointer) {
+  char_vector current_chars = vector_create();
   int terminating_string_length = strlen(terminating_string);
-  vector_reserve(&current_chars, terminating_string_length);
+  vector_resize(&current_chars, terminating_string_length);
   while (true) {
-    char current_char = pop_char(file);
+    char current_char = pop_char(char_pointer);
 
     if ((int)vector_size(current_chars) == terminating_string_length) {
       vector_remove(&current_chars, 0);
@@ -52,10 +55,24 @@ void advance_till(char terminating_string[], FILE *file) {
     vector_add(&current_chars, current_char);
 
     bool is_terminating_string = strcmp(current_chars, terminating_string) == 0;
-    if (is_terminating_string || EOF) {
+    if (is_terminating_string || current_char == EOF) {
       return;
     }
   }
+}
+
+// Make a string till condition is false, at end finish string and do misc
+void collect_characters(token *token, bool (*condition)(char),
+                        char **char_pointer) {
+  char current_char = pop_char(char_pointer);
+  while (condition(current_char) && current_char != EOF) {
+    vector_add(&token->value, current_char);
+    current_char = pop_char(char_pointer);
+  }
+  // Return consumed char
+  return_char(char_pointer);
+  // Add string ending notifier
+  vector_add(&token->value, '\0');
 }
 
 token *create_token(token_type type) {
@@ -67,48 +84,34 @@ token *create_token(token_type type) {
 
 // Generate token like = or == (or <=)
 token *create_double(char expected, token_type once, token_type twice,
-                     FILE *file) {
-  if (match_char(expected, file)) {
+                     char **char_pointer) {
+  if (match_char(expected, char_pointer)) {
     return create_token(twice);
   } else {
     return create_token(once);
   }
 }
 
-// Make a string till condition is false, at end finish string and do misc
-void collect_characters(token *token, bool (*condition)(char), FILE *file) {
-  char current = pop_char(file);
-  while (condition(current) && current != EOF) {
-    vector_add(&token->value, current);
-    current = pop_char(file);
-  }
-  // Return consumed char
-  return_char(current, file);
-  // Add string ending notifier
-  vector_add(&token->value, '\0');
-}
-
 bool not_quote(char c) { return c != '"'; }
 
-token *create_string(FILE *file) {
+token *create_string(char **char_pointer) {
   token *string_token = create_token(TOKEN_STRING);
   vector_reserve(&string_token->value, 8);
 
   // " was skipped from main loop
-  collect_characters(string_token, not_quote, file);
-  pop_char(file); // Remove extra "
+  collect_characters(string_token, not_quote, char_pointer);
+  pop_char(char_pointer); // Remove extra "
 
   return string_token;
 }
 
 bool isdigit_wrapper(char c) { return isdigit((unsigned char)c) != 0; }
 
-token *create_number(char current, FILE *file) {
+token *create_number(char **char_pointer) {
   token *number_token = create_token(TOKEN_NUMBER);
   vector_reserve(&number_token->value, 8);
 
-  return_char(current, file);
-  collect_characters(number_token, isdigit_wrapper, file);
+  collect_characters(number_token, isdigit_wrapper, char_pointer);
 
   return number_token;
 }
@@ -123,13 +126,12 @@ bool value_is(char *value, char *to_compare) {
   return strcmp(value, to_compare) == 0;
 }
 
-token *create_keyword(char current, FILE *file) {
+token *create_keyword(char **char_pointer) {
   token *keyword_token = create_token(TOKEN_NAME);
 
-  return_char(current, file);
-  collect_characters(keyword_token, is_valid_keyword_char, file);
+  collect_characters(keyword_token, is_valid_keyword_char, char_pointer);
 
-  char *value = keyword_token->value;
+  char_vector value = keyword_token->value;
   token_type type;
 
   // TODO: Turn this into hashmap (or switch)
@@ -188,7 +190,9 @@ token *create_keyword(char current, FILE *file) {
   return keyword_token;
 }
 
-token *lexer(FILE *file) {
+token *lexer(char_vector chars) {
+  char **char_pointer = &chars;
+
   // Make a vector of pointers so I can avoid memory leaks where I copy
   // dereferenced token struct and leak the one pointed to
   token *tokens = vector_create();
@@ -197,7 +201,7 @@ token *lexer(FILE *file) {
 
   char current_char;
   while (true) {
-    current_char = pop_char(file);
+    current_char = peek_char(char_pointer);
     if (current_char == EOF) {
       break;
     }
@@ -206,14 +210,15 @@ token *lexer(FILE *file) {
     case ' ':
     case '\t':
     case '\n':
+      advance_char(char_pointer);
       continue;
 
     // Numbers/Keywords
     default:
       if (isdigit(current_char)) {
-        current_token = create_number(current_char, file);
+        current_token = create_number(char_pointer);
       } else if (isalpha(current_char)) {
-        current_token = create_keyword(current_char, file);
+        current_token = create_keyword(char_pointer);
       } else {
         // This text annoying as heck
         printf("UNKNOWN CHARACTER: %c\n", current_char);
@@ -223,7 +228,7 @@ token *lexer(FILE *file) {
 
     // Special
     case '\"':
-      current_token = create_string(file);
+      current_token = create_string(char_pointer);
       break;
     case '\'':
       // TODO: create_char
@@ -235,24 +240,26 @@ token *lexer(FILE *file) {
     // Equality
     case '=':
       current_token =
-          create_double('=', TOKEN_EQUALS, TOKEN_EQUALS_EQUALS, file);
+          create_double('=', TOKEN_EQUALS, TOKEN_EQUALS_EQUALS, char_pointer);
       break;
     case '!':
-      current_token = create_double('=', TOKEN_NOT, TOKEN_NOT_EQUALS, file);
+      current_token =
+          create_double('=', TOKEN_NOT, TOKEN_NOT_EQUALS, char_pointer);
       break;
     case '<':
-      current_token =
-          create_double('=', TOKEN_LESS_THAN, TOKEN_LESS_THAN_EQUALS, file);
+      current_token = create_double('=', TOKEN_LESS_THAN,
+                                    TOKEN_LESS_THAN_EQUALS, char_pointer);
       break;
     case '>':
       current_token = create_double('=', TOKEN_GREATER_THAN,
-                                    TOKEN_GREATER_THAN_EQUALS, file);
+                                    TOKEN_GREATER_THAN_EQUALS, char_pointer);
       break;
     case '&':
-      current_token = create_double('&', TOKEN_AMPERSAND, TOKEN_AND, file);
+      current_token =
+          create_double('&', TOKEN_AMPERSAND, TOKEN_AND, char_pointer);
       break;
     case '|':
-      current_token = create_double('|', TOKEN_PIPE, TOKEN_OR, file);
+      current_token = create_double('|', TOKEN_PIPE, TOKEN_OR, char_pointer);
       break;
     case '^':
       current_token = create_token(TOKEN_CARET);
@@ -260,24 +267,26 @@ token *lexer(FILE *file) {
 
     // Math operations
     case '+':
-      current_token = create_double('+', TOKEN_PLUS, TOKEN_PLUS_PLUS, file);
+      current_token =
+          create_double('+', TOKEN_PLUS, TOKEN_PLUS_PLUS, char_pointer);
       break;
     case '-':
       // Wish I could do ->
-      current_token = create_double('+', TOKEN_MINUS, TOKEN_MINUS_MINUS, file);
+      current_token =
+          create_double('+', TOKEN_MINUS, TOKEN_MINUS_MINUS, char_pointer);
       break;
     case '*':
       current_token = create_token(TOKEN_STAR);
       break;
     case '/':
-      switch (peek_char(file)) {
+      switch (peek_char(char_pointer)) {
       case '/':
-        pop_char(file);
-        advance_till("\n", file);
+        pop_char(char_pointer);
+        advance_till("\n", char_pointer);
         break;
       case '*':
-        pop_char(file);
-        advance_till("*/", file);
+        pop_char(char_pointer);
+        advance_till("*/", char_pointer);
         break;
       default:
         current_token = create_token(TOKEN_SLASH);

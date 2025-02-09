@@ -9,25 +9,6 @@ const char *node_type_to_string(node_type type) {
   return enum_to_string(type, node_type_strings);
 }
 
-node *create_node(node_type type) {
-  node *node = malloc(sizeof(node));
-  node->type = type;
-  node->children = vector_create();
-  node->data = vector_create();
-  return node;
-}
-
-// Same thing as create_node but *data dereferenced and put into new vector
-node *create_node_with_data(node_type type, char *data) {
-  node *node = malloc(sizeof(node));
-  node->type = type;
-  node->children = vector_create();
-  node->data = vector_create();
-  // Bug here. Add entire vector lol
-  vector_add(&node->data, *data);
-  return node;
-}
-
 void advance_token(token **token_pointer) {
   // Pointer arithmetic to advance pointer by 1 token length
   *token_pointer += 1;
@@ -46,6 +27,25 @@ token *pop_token(token **token_pointer) {
 token *peek_token(token **token_pointer) {
   token *token = &(**token_pointer);
   return token;
+}
+
+node *create_node(node_type type) {
+  node *node = malloc(sizeof(node));
+  node->type = type;
+  node->children = vector_create();
+  node->data = vector_create();
+  return node;
+}
+
+// Same thing as create_node but *data dereferenced and put into new vector
+node *create_node_with_data(node_type type, char *data) {
+  node *node = malloc(sizeof(node));
+  node->type = type;
+  node->children = vector_create();
+  node->data = vector_create();
+  // Bug here. Add entire vector lol
+  vector_add(&node->data, *data);
+  return node;
 }
 
 bool is_at_end(token **token_pointer) {
@@ -397,12 +397,12 @@ void print_ast(node *ast, int indent_level) {
   // Generate indents
   char *spaces = malloc(indent_level * sizeof(char));
   for (int i = 0; i < indent_level; i++) {
-    spaces[i] = ' ';
+    spaces[i] = '\t';
   }
 
   // Print out this node
   printf("%s%s\n", spaces, node_type_to_string(ast->type));
-  for (int i = 0; i < vector_size(ast->children); i++) {
+  for (int i = 0; i < (int)vector_size(ast->children); i++) {
     print_ast(&ast->children[i], indent_level + 1);
   }
 

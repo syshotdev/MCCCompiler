@@ -15,17 +15,37 @@
  * Be able to tokenize/lex/use standard C libraries
  */
 
+char_vector string_from_file(FILE *file) {
+  // Seek to end of file to get the size
+  fseek(file, 0, SEEK_END);
+  size_t size = ftell(file);
+  rewind(file);
+
+  char_vector chars = vector_create();
+  vector_reserve(&chars, size + 1);
+
+  // Read entire file into the buffer
+  fread(chars, 1, size, file);
+  // Add null terminator
+  chars[size] = '\0';
+
+  return chars;
+}
+
 // I think no memory leaks or segmentation faults. Good luck!
 int main(void) {
-  char file_name[] = "test/assignment.c";
+  char file_name[] = "test.mcc";
 
   FILE *file;
   file = fopen(file_name, "r");
 
   if (!file) {
     printf("Couldn't find file: %s", file_name);
+    exit(1);
   }
-  token *tokens = lexer(file);
+
+  char_vector chars = string_from_file(file);
+  token *tokens = lexer(chars);
   parser(tokens);
 
   fclose(file);
