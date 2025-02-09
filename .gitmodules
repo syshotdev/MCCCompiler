@@ -1,0 +1,6 @@
+[submodule "c-hashmap"]
+	path = c-hashmap
+	url = https://github.com/tidwall/hashmap.c
+[submodule "c-vector"]
+	path = c-vector
+	url = https://github.com/Mashpoe/c-vector
