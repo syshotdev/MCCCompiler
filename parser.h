@@ -5,6 +5,21 @@
 #include "lexer.h"
 #include <stdio.h>
 
+
+typedef enum {
+  PRECEDENCE_NONE,
+  PRECEDENCE_ASSIGNMENT, // =
+  PRECEDENCE_OR,         // or
+  PRECEDENCE_AND,        // and
+  PRECEDENCE_EQUALITY,   // == !=
+  PRECEDENCE_COMPARISON, // < > <= >=
+  PRECEDENCE_TERM,       // + -
+  PRECEDENCE_FACTOR,     // * /
+  PRECEDENCE_UNARY,      // ! -
+  PRECEDENCE_CALL,       // . ()
+  PRECEDENCE_PRIMARY,
+} precedence;
+
 #define ITERATE_NODES_AND(X)                                                   \
   X(NODE_START)                                                                \
   X(NODE_END)                                                                  \
@@ -40,22 +55,10 @@
 
 typedef enum { ITERATE_NODES_AND(GENERATE_ENUM) } node_type;
 
+// 90% sure this "extern" is required. Remove at your own risk.
 extern const char *node_type_strings[];
+// Call this function to get string from node type
 const char *node_type_to_string(node_type type);
-
-typedef enum {
-  PRECEDENCE_NONE,
-  PRECEDENCE_ASSIGNMENT, // =
-  PRECEDENCE_OR,         // or
-  PRECEDENCE_AND,        // and
-  PRECEDENCE_EQUALITY,   // == !=
-  PRECEDENCE_COMPARISON, // < > <= >=
-  PRECEDENCE_TERM,       // + -
-  PRECEDENCE_FACTOR,     // * /
-  PRECEDENCE_UNARY,      // ! -
-  PRECEDENCE_CALL,       // . ()
-  PRECEDENCE_PRIMARY,
-} precedence;
 
 typedef struct node {
   node_type type;

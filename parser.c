@@ -55,6 +55,7 @@ bool is_at_end(token **token_pointer) {
 token *expect_token(token_type type, token **token_pointer) {
   token *token = pop_token(token_pointer);
   if (token->type != type) {
+    // Should error
     printf("Token given: %s \n Token expected: %s \n",
            token_type_to_string(token->type), token_type_to_string(type));
   }
@@ -153,7 +154,7 @@ node *parse_binary(node *last_expression, token **token_pointer) {
   }
 
   node *ast = create_node(NODE_EQUATION);
-  vector_reserve(&ast->children, 3);
+  vector_resize(&ast->children, 3);
   vector_add(&ast->children, *create_node(type));
   vector_add(&ast->children, *last_expression);
   vector_add(&ast->children, *next_expression);
@@ -185,7 +186,7 @@ node *parse_unary(token **token_pointer) {
 
   node *ast = create_node(NODE_EQUATION);
   ast->children = vector_create();
-  vector_reserve(&ast->children, 2);
+  vector_resize(&ast->children, 2);
   vector_add(&ast->children, *create_node(type));
   vector_add(&ast->children, *expression);
 
@@ -291,7 +292,7 @@ node *parse_type(token **token_pointer) {
 
   token *current_token = peek_token(token_pointer);
   node *ast = create_node(NODE_NONE);
-  vector_reserve(&ast->children, 4);
+  vector_resize(&ast->children, 4);
 
   // Oh man so messy
   node *node_type = create_node_with_data(NODE_TYPE, type->value);
@@ -395,14 +396,14 @@ node *parse_block(token **token_pointer) {
 
 void print_ast(node *ast, int indent_level) {
   // Generate indents
-  char *spaces = malloc(indent_level * sizeof(char));
+  char *tabs = malloc(indent_level * sizeof(char));
   for (int i = 0; i < indent_level; i++) {
-    spaces[i] = '\t';
+    tabs[i] = '\t';
   }
 
   // Print out this node
-  printf("%s%s\n", spaces, node_type_to_string(ast->type));
-  for (int i = 0; i < (int)vector_size(ast->children); i++) {
+  printf("%s%s\n", tabs, node_type_to_string(ast->type));
+  for (int i = 0; i < (int)vector_size((vector*)&ast->children); i++) {
     print_ast(&ast->children[i], indent_level + 1);
   }
 

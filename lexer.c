@@ -49,7 +49,8 @@ void advance_till(char terminating_string[], char **char_pointer) {
   while (true) {
     char current_char = pop_char(char_pointer);
 
-    if ((int)vector_size(current_chars) == terminating_string_length) {
+    if ((int)vector_size((vector *)&current_chars) ==
+        terminating_string_length) {
       vector_remove(&current_chars, 0);
     }
     vector_add(&current_chars, current_char);
@@ -96,7 +97,7 @@ bool not_quote(char c) { return c != '"'; }
 
 token *create_string(char **char_pointer) {
   token *string_token = create_token(TOKEN_STRING);
-  vector_reserve(&string_token->value, 8);
+  vector_resize(&string_token->value, 8);
 
   // " was skipped from main loop
   collect_characters(string_token, not_quote, char_pointer);
@@ -109,7 +110,7 @@ bool isdigit_wrapper(char c) { return isdigit((unsigned char)c) != 0; }
 
 token *create_number(char **char_pointer) {
   token *number_token = create_token(TOKEN_NUMBER);
-  vector_reserve(&number_token->value, 8);
+  vector_resize(&number_token->value, 8);
 
   collect_characters(number_token, isdigit_wrapper, char_pointer);
 
@@ -196,7 +197,7 @@ token *lexer(char_vector chars) {
   // Make a vector of pointers so I can avoid memory leaks where I copy
   // dereferenced token struct and leak the one pointed to
   token *tokens = vector_create();
-  vector_reserve(&tokens, 16);
+  vector_resize(&tokens, 16);
   token *current_token;
 
   char current_char;
@@ -279,14 +280,16 @@ token *lexer(char_vector chars) {
       current_token = create_token(TOKEN_STAR);
       break;
     case '/':
+      // We get rid of first '/' and peek next one
+      pop_char(char_pointer);
       switch (peek_char(char_pointer)) {
       case '/':
-        pop_char(char_pointer);
         advance_till("\n", char_pointer);
+        continue;
         break;
       case '*':
-        pop_char(char_pointer);
         advance_till("*/", char_pointer);
+        continue;
         break;
       default:
         current_token = create_token(TOKEN_SLASH);
