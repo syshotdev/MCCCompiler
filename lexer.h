@@ -18,6 +18,7 @@
                                                                                \
   X(TOKEN_SIZEOF)                                                              \
   X(TOKEN_TYPEOF)                                                              \
+  X(TOKEN_TYPEDEF)                                                             \
                                                                                \
   X(TOKEN_STRUCT)                                                              \
   X(TOKEN_ENUM)                                                                \

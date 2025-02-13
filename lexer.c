@@ -160,6 +160,8 @@ token *create_keyword(char **char_pointer) {
     type = TOKEN_SIZEOF;
   } else if (value_is(value, "typeof")) {
     type = TOKEN_TYPEOF;
+  } else if (value_is(value, "typedef")) {
+    type = TOKEN_TYPEDEF;
   } else if (value_is(value, "struct")) {
     type = TOKEN_STRUCT;
   } else if (value_is(value, "enum")) {

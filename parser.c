@@ -427,8 +427,21 @@ void print_ast(node *ast, int indent_level) {
     tabs[i] = '\t';
   }
 
-  // Print out this node
-  printf("%s%s\n", tabs, node_type_to_string(ast->type));
+  // Get data (value) from node
+  char_vector value = vector_create();
+  for (int i = 0; i < (int)vector_size((vector*)&ast->data); i++) {
+    vector_add(&value, ast->data[i]);
+  }
+  // Just in case I didn't null-terminate it (very likely the case)
+  vector_add(&value, '\0');
+
+  // Problem with this print method: numbers aren't printed right. Have to switch
+  // based on if this is expected string or digit input
+  //
+  // Print out this node's type + value
+  printf("%s%s, Value: %s\n", tabs, node_type_to_string(ast->type), value);
+
+  // Last: Print children
   for (int i = 0; i < (int)vector_size((vector*)&ast->children); i++) {
     print_ast(&ast->children[i], indent_level + 1);
   }
