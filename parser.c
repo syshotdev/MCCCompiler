@@ -2,6 +2,8 @@
 #include "c-vector/vec.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+
 
 const char *node_type_strings[] = {ITERATE_NODES_AND(GENERATE_STRING)};
 
@@ -352,6 +354,20 @@ bool is_token_type(token **token_pointer) {
   return is_token_type;
 }
 
+int compare_string_vectors(const void *a, const void *b, void* _udata) {
+  // Would use char_vector here but LSP complains
+  const char *type1 = a;
+  const char *type2 = b;
+  return strcmp(type1, type2);
+}
+
+
+uint64_t hash_string_vector(const void *data, uint64_t seed0, uint64_t seed1) {
+  const char *char_vector = data;
+  const size_t char_vector_size = vector_size((vector*)&char_vector);
+  return hashmap_sip(char_vector, sizeof(char) * char_vector_size, seed0, seed1);
+}
+
 // Parses a scope (block of tokens between braces) and turns it into an abstract syntax tree.
 node *parse_scope(token **token_pointer) {
   token *current_token = peek_token(token_pointer);
@@ -364,7 +380,20 @@ node *parse_scope(token **token_pointer) {
   // For types, we have a hashmap corresponding to our scope, and
   // before saying a name = variable, we check if it's in the hashmap.
   // It is? Then we run parse_type instead of parse_variable_assignment
-  //void *hashmap = hashmap_new(sizeof());
+  volatile char_vector test_char_vector = vector_create();
+  vector_resize(&test_char_vector, 2);
+  vector_add(&test_char_vector, 'H');
+  vector_add(&test_char_vector, 'i');
+  volatile char_vector test_char_vector2 = vector_create();
+  vector_resize(&test_char_vector2, 2);
+  vector_add(&test_char_vector2, 'H');
+  vector_add(&test_char_vector2, 'i');
+  struct hashmap *hashmap = hashmap_new(sizeof(char_vector), 0, 0, 0, hash_string_vector, compare_string_vectors, NULL, NULL);
+  //vector_add(&test_char_vector, '\0');
+  hashmap_set(hashmap, test_char_vector);
+  hashmap_set(hashmap, test_char_vector2);
+  bool is_same = 0 == strcmp(hashmap_get(hashmap, test_char_vector), hashmap_get(hashmap, test_char_vector));
+  printf(is_same ? "Yeah same string\n" : "Not same string\n");
   /*
    * hashmap_new(size_t elsize, size_t cap, uint64_t seed0, 
     uint64_t seed1, 
