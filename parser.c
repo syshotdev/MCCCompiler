@@ -38,12 +38,16 @@ node *create_node(node_type type) {
 }
 
 // Same thing as create_node but *data dereferenced and put into new vector
-node *create_node_with_data(node_type type, char *data) {
+node *create_node_with_vector(node_type type, char_vector data) {
   node *node = malloc(sizeof(node));
   node->type = type;
   node->children = vector_create();
   node->data = vector_create();
-  // Bug here. Add entire vector lol
+  for (int i = 0; i < (int)vector_size((vector*)&data); i++) {
+    // Find out how big each element in the vector is
+    // For byte in data, add it to node data
+    vector_add(&node->data, data[i]);
+  }
   vector_add(&node->data, *data);
   return node;
 }
@@ -273,7 +277,7 @@ int how_many_in_a_row(token_type type, token **token_pointer) {
 }
 
 // Parse something like "a = 12 + (9 * 20);"
-node *parse_variable_declaration(token **token_pointer) {
+node *parse_variable_assignment(token **token_pointer) {
   token *name = expect_token(TOKEN_NAME, token_pointer);
   expect_token(TOKEN_EQUALS, token_pointer);
   node *ast = create_node(NODE_VARIABLE_DECLARATION);
@@ -286,19 +290,25 @@ node *parse_function(token **token_pointer) { return create_node(NODE_NONE); }
 
 // Parse a variable or function declaration.
 node *parse_type(token **token_pointer) {
+  // Get the type, how many references, then the name of function/variable
   token *type = expect_token(TOKEN_NAME, token_pointer);
+
   int pointer_amount = how_many_in_a_row(TOKEN_STAR, token_pointer);
+  char_vector pointer_amount_vector = vector_create();
+  vector_add(&pointer_amount_vector, pointer_amount);
+
   token *name = expect_token(TOKEN_NAME, token_pointer);
 
   token *current_token = peek_token(token_pointer);
   node *ast = create_node(NODE_NONE);
   vector_resize(&ast->children, 4);
 
+
   // Oh man so messy
-  node *node_type = create_node_with_data(NODE_TYPE, type->value);
+  node *node_type = create_node_with_vector(NODE_TYPE, type->value);
   node *node_pointer =
-      create_node_with_data(NODE_POINTER, (char *)(&pointer_amount));
-  node *node_variable = create_node_with_data(NODE_VARIABLE, name->value);
+      create_node_with_vector(NODE_POINTER, pointer_amount_vector);
+  node *node_variable = create_node_with_vector(NODE_VARIABLE, name->value);
 
   vector_add(&ast->children, *node_type);
   vector_add(&ast->children, *node_pointer);
@@ -327,6 +337,9 @@ node *parse_type(token **token_pointer) {
 
 // Checks if has two name tokens in a row, example:
 // int variable = ...
+//
+// Why does this work again? I come back to this after 3 months and have no idea
+// what I was thinking here
 bool is_token_type(token **token_pointer) {
   pop_token(token_pointer);
   token *current_token = peek_token(token_pointer);
@@ -339,14 +352,27 @@ bool is_token_type(token **token_pointer) {
   return is_token_type;
 }
 
-// Parses a block of C tokens and outputs the block's AST reprisentation.
-node *parse_block(token **token_pointer) {
+// Parses a scope (block of tokens between braces) and turns it into an abstract syntax tree.
+node *parse_scope(token **token_pointer) {
   token *current_token = peek_token(token_pointer);
   node *ast;
 
   //printf("Current token: '%s'\n",
   //         token_type_to_string(current_token->type));
 
+
+  // For types, we have a hashmap corresponding to our scope, and
+  // before saying a name = variable, we check if it's in the hashmap.
+  // It is? Then we run parse_type instead of parse_variable_assignment
+  //void *hashmap = hashmap_new(sizeof());
+  /*
+   * hashmap_new(size_t elsize, size_t cap, uint64_t seed0, 
+    uint64_t seed1, 
+    uint64_t (*hash)(const void *item, uint64_t seed0, uint64_t seed1),
+    int (*compare)(const void *a, const void *b, void *udata),
+    void (*elfree)(void *item),
+    void *udata);
+   */
   switch (current_token->type) {
   default:
     //printf("Error in parse block, unknown type '%s'\n",
@@ -358,7 +384,7 @@ node *parse_block(token **token_pointer) {
     if (is_token_type(token_pointer)) {
       ast = parse_type(token_pointer);
     } else {
-      ast = parse_variable_declaration(token_pointer);
+      ast = parse_variable_assignment(token_pointer);
     }
     break;
 
@@ -414,7 +440,7 @@ void print_ast(node *ast, int indent_level) {
 node *parser(token *tokens) {
   // Pointer to pointer so we can store state of which token we're on
   token **token_pointer = &tokens;
-  node *ast = parse_block(token_pointer);
+  node *ast = parse_scope(token_pointer);
 
   print_ast(ast, 0);
 

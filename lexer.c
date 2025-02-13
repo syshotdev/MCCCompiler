@@ -1,5 +1,7 @@
 // Inputs = c source char_pointer, outputs = tokens like TOKEN_EQUALS or
-// TOKEN_STRUCT Also TODO: Lexer, Preprocessor, Parser, Code_Analyzer.c
+// TOKEN_STRUCT
+//
+// Also TODO: Lexer, Preprocessor, Parser, Code_Analyzer.c
 #include "lexer.h"
 #include <ctype.h>
 #include <stdlib.h>
@@ -32,16 +34,8 @@ char peek_char(char **char_pointer) {
   return current_char;
 }
 
-// Return whether the next character == expected, and if expected pop char
-bool match_char(char expected, char **char_pointer) {
-  bool is_same = peek_char(char_pointer) == expected;
-  if (is_same) {
-    advance_char(char_pointer);
-  }
-  return is_same;
-}
-
-// Advance till a specific string of characters is found
+// Advance till a specific string of characters is found (stops before pointer
+// is on string)
 void advance_till(char terminating_string[], char **char_pointer) {
   char_vector current_chars = vector_create();
   int terminating_string_length = strlen(terminating_string);
@@ -82,11 +76,23 @@ token *create_token(token_type type) {
   token->value = vector_create();
   return token;
 }
+token *create_single(token_type type, char **char_pointer) {
+  advance_char(char_pointer);
+  return create_token(type);
+}
 
-// Generate token like = or == (or <=)
+// Generate token like = or == (or <=) (This definition sucks)
+// We are at first char. If next char is expected, create twice token, otherwise
+// create once. Ex: We are at '-', if we advance char and another '-', create
+// twice token.
 token *create_double(char expected, token_type once, token_type twice,
                      char **char_pointer) {
-  if (match_char(expected, char_pointer)) {
+  // Skip current "once" char, and check if next char is "twice" chars
+  advance_char(char_pointer);
+  bool is_expected = peek_char(char_pointer) == expected;
+  if (is_expected) {
+    // Skip "twice" char
+    advance_char(char_pointer);
     return create_token(twice);
   } else {
     return create_token(once);
@@ -99,9 +105,9 @@ token *create_string(char **char_pointer) {
   token *string_token = create_token(TOKEN_STRING);
   vector_resize(&string_token->value, 8);
 
-  // " was skipped from main loop
+  advance_char(char_pointer); // Remove "
   collect_characters(string_token, not_quote, char_pointer);
-  pop_char(char_pointer); // Remove extra "
+  advance_char(char_pointer); // Remove "
 
   return string_token;
 }
@@ -201,9 +207,11 @@ token *lexer(char_vector chars) {
   token *current_token;
 
   char current_char;
+  // Note: Since we only peek_char here, it's the function's responsibility to pop the char
+  // and keep the loop not... infinite.
   while (true) {
     current_char = peek_char(char_pointer);
-    if (current_char == EOF) {
+    if (current_char == EOF || current_char == '\0') {
       break;
     }
     switch (current_char) {
@@ -221,8 +229,9 @@ token *lexer(char_vector chars) {
       } else if (isalpha(current_char)) {
         current_token = create_keyword(char_pointer);
       } else {
-        // This text annoying as heck
         printf("UNKNOWN CHARACTER: %c\n", current_char);
+        // Unknown character? Skip it.
+        advance_char(char_pointer);
         continue;
       }
       break;
@@ -263,7 +272,7 @@ token *lexer(char_vector chars) {
       current_token = create_double('|', TOKEN_PIPE, TOKEN_OR, char_pointer);
       break;
     case '^':
-      current_token = create_token(TOKEN_CARET);
+      current_token = create_single(TOKEN_CARET, char_pointer);
       break;
 
     // Math operations
@@ -274,10 +283,10 @@ token *lexer(char_vector chars) {
     case '-':
       // Wish I could do ->
       current_token =
-          create_double('+', TOKEN_MINUS, TOKEN_MINUS_MINUS, char_pointer);
+          create_double('-', TOKEN_MINUS, TOKEN_MINUS_MINUS, char_pointer);
       break;
     case '*':
-      current_token = create_token(TOKEN_STAR);
+      current_token = create_single(TOKEN_STAR, char_pointer);
       break;
     case '/':
       // We get rid of first '/' and peek next one
@@ -292,44 +301,45 @@ token *lexer(char_vector chars) {
         continue;
         break;
       default:
+        // We create token here because '/' is already skipped
         current_token = create_token(TOKEN_SLASH);
         break;
       }
       break;
     case '%':
-      current_token = create_token(TOKEN_PERCENT);
+      current_token = create_single(TOKEN_PERCENT, char_pointer);
       break;
 
     // Punctuation
     case '(':
-      current_token = create_token(TOKEN_LEFT_PARENTHESES);
+      current_token = create_single(TOKEN_LEFT_PARENTHESES, char_pointer);
       break;
     case ')':
-      current_token = create_token(TOKEN_RIGHT_PARENTHESES);
+      current_token = create_single(TOKEN_RIGHT_PARENTHESES, char_pointer);
       break;
     case '[':
-      current_token = create_token(TOKEN_LEFT_BRACKET);
+      current_token = create_single(TOKEN_LEFT_BRACKET, char_pointer);
       break;
     case ']':
-      current_token = create_token(TOKEN_RIGHT_BRACKET);
+      current_token = create_single(TOKEN_RIGHT_BRACKET, char_pointer);
       break;
     case '{':
-      current_token = create_token(TOKEN_LEFT_BRACKET);
+      current_token = create_single(TOKEN_LEFT_BRACKET, char_pointer);
       break;
     case '}':
-      current_token = create_token(TOKEN_RIGHT_BRACKET);
+      current_token = create_single(TOKEN_RIGHT_BRACKET, char_pointer);
       break;
     case '.':
-      current_token = create_token(TOKEN_DOT);
+      current_token = create_single(TOKEN_DOT, char_pointer);
       break;
     case ',':
-      current_token = create_token(TOKEN_COMMA);
+      current_token = create_single(TOKEN_COMMA, char_pointer);
       break;
     case ';':
-      current_token = create_token(TOKEN_SEMI_COLON);
+      current_token = create_single(TOKEN_SEMI_COLON, char_pointer);
       break;
     case ':':
-      current_token = create_token(TOKEN_COLON);
+      current_token = create_single(TOKEN_COLON, char_pointer);
       break;
     }
 
