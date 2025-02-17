@@ -60,11 +60,61 @@ extern const char *node_type_strings[];
 // Call this function to get string from node type
 const char *node_type_to_string(node_type type);
 
+
+/*
+struct string {
+  char_vector value;
+}
+struct number {
+  int value;
+}
+*/
+// Operator is binary operator (+-*/%^&) or unary operator
+// a and b are statements
+/*
+struct equation {
+  struct token_type operator;
+  struct statement a;
+  struct statement b; // Optional based on whether a binary or unary operation
+}
+struct variable {
+  type;
+  pointer_amount;
+  name;
+  value; // (Statement or maybe Equation?) (Optional)
+}
+struct statement {
+  // is equal to variable declaration/assignment, math operators, conditions, function call, etc.
+  // Statements are used everywhere, for example in while loops or for loops, or
+  // declaring a variable in a function. Idk what a statement would have, though.
+}
+struct function {
+  type;
+  pointer_amount;
+  name;
+  parameters;
+  block;
+}
+// Parameter could also be '...', but I'm not sure how to implement that yet.
+struct parameter {
+  type;
+  pointer_amount;
+  name;
+}
+struct function_call {
+  name;
+  parameters;
+}
+*/
 typedef struct node {
   node_type type;
   struct node *children; // Always a vector!
   char *data;            // Always a vector!
 } node;
+
+
+
+typedef struct hashmap** hashmap_vector;
 
 // ALL OF THESE WILL GO INTO NEXT COMPILATION STEP
 // Literally types like int or char* or struct node
