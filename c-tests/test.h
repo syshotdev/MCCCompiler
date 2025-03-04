@@ -5,8 +5,8 @@
 
 #define assert(condition)                                                      \
   ({                                                                           \
-    if ((condition) == FAILED)                                                   \
-      printf("Assertion failed: %s, in %s, line %d\n", #condition, __FILE__,        \
+    if ((condition) == FAILED)                                                 \
+      printf("Assertion failed: %s, in %s, line %d\n", #condition, __FILE__,   \
              __LINE__);                                                        \
     condition;                                                                 \
   })

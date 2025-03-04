@@ -1,0 +1,10 @@
+Stack-based allocations for nodes
+Node array = array of node structs rather than pointers
+current_<type> rather than <type>, because C compiler gets very confused
+AST -> current_node
+
+Completed:
+Error handling for unexpected tokens
+
+Nah:
+Turn all "token_pointers" to an index in the array, rather than a pointer.
