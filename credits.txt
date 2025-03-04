@@ -13,3 +13,5 @@ C Hashmap Library by Tidwall:
 https://github.com/tidwall/hashmap.c
 C Enum to String by https://www.reddit.com/user/SoulsBloodSausage/:
 https://www.reddit.com/r/C_Programming/comments/1f2rkvt/convert_c_enum_to_its_string_representation/
+Inspiration for structs and general parser design, by Lens_r:
+https://youtu.be/yJwNcomABco?si=aLy3an5ES5Hq3OB-

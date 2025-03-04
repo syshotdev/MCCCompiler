@@ -2,6 +2,7 @@
 // TOKEN_STRUCT
 //
 // Also TODO: Lexer, Preprocessor, Parser, Code_Analyzer.c
+#include "c-tests/test.h"
 #include "lexer.h"
 #include <ctype.h>
 #include <stdlib.h>
@@ -13,7 +14,6 @@ const char *token_type_to_string(token_type type) {
   return enum_to_string(type, token_type_strings);
 }
 
-// Not implemented yet. For when I build my own standard library
 void advance_char(char **char_pointer) {
   // Pointer arithmetic to advance pointer by 1 char length
   *char_pointer += 1;
@@ -34,6 +34,14 @@ char peek_char(char **char_pointer) {
   return current_char;
 }
 
+token create_token(token_type type) {
+  token current_token = {
+    .type = type,
+    .value = vector_create(),
+  };
+  return current_token;
+}
+
 // Advance till a specific string of characters is found (stops before pointer
 // is on string)
 void advance_till(char terminating_string[], char **char_pointer) {
@@ -49,61 +57,62 @@ void advance_till(char terminating_string[], char **char_pointer) {
     }
     vector_add(&current_chars, current_char);
 
-    bool is_terminating_string = strcmp(current_chars, terminating_string) == 0;
-    if (is_terminating_string || current_char == EOF) {
+    bool is_terminating_string = strncmp(current_chars, terminating_string, terminating_string_length) == 0;
+    if (is_terminating_string || current_char == '\0') {
       return;
     }
   }
 }
 
 // Make a string till condition is false, at end finish string and do misc
-void collect_characters(token *token, bool (*condition)(char),
+void collect_characters(token current_token, bool (*condition)(char),
                         char **char_pointer) {
   char current_char = pop_char(char_pointer);
   while (condition(current_char) && current_char != EOF) {
-    vector_add(&token->value, current_char);
+    vector_add(&current_token.value, current_char);
     current_char = pop_char(char_pointer);
   }
   // Return consumed char
   return_char(char_pointer);
   // Add string ending notifier
-  vector_add(&token->value, '\0');
+  vector_add(&current_token.value, '\0');
 }
 
-token *create_token(token_type type) {
-  token *token = malloc(sizeof(token));
-  token->type = type;
-  token->value = vector_create();
-  return token;
-}
-token *create_single(token_type type, char **char_pointer) {
+token create_single(token_type type, char **char_pointer) {
   advance_char(char_pointer);
-  return create_token(type);
+  token current_token = create_token(type);
+  vector_add(&current_token.value, '\0');
+  return current_token;
 }
 
 // Generate token like = or == (or <=) (This definition sucks)
 // We are at first char. If next char is expected, create twice token, otherwise
 // create once. Ex: We are at '-', if we advance char and another '-', create
 // twice token.
-token *create_double(char expected, token_type once, token_type twice,
+token create_double(char expected, token_type once, token_type twice,
                      char **char_pointer) {
   // Skip current "once" char, and check if next char is "twice" chars
   advance_char(char_pointer);
+
+  token current_token = create_token(TOKEN_END);
+  vector_add(&current_token.value, '\0');
   bool is_expected = peek_char(char_pointer) == expected;
   if (is_expected) {
     // Skip "twice" char
     advance_char(char_pointer);
-    return create_token(twice);
+    current_token.type = twice;
+    return current_token;
   } else {
-    return create_token(once);
+    current_token.type = once;
+    return current_token;
   }
 }
 
 bool not_quote(char c) { return c != '"'; }
 
-token *create_string(char **char_pointer) {
-  token *string_token = create_token(TOKEN_STRING);
-  vector_resize(&string_token->value, 8);
+token create_string(char **char_pointer) {
+  token string_token = create_token(TOKEN_STRING);
+  vector_resize(&string_token.value, 8);
 
   advance_char(char_pointer); // Remove "
   collect_characters(string_token, not_quote, char_pointer);
@@ -114,9 +123,9 @@ token *create_string(char **char_pointer) {
 
 bool isdigit_wrapper(char c) { return isdigit((unsigned char)c) != 0; }
 
-token *create_number(char **char_pointer) {
-  token *number_token = create_token(TOKEN_NUMBER);
-  vector_resize(&number_token->value, 8);
+token create_number(char **char_pointer) {
+  token number_token = create_token(TOKEN_NUMBER);
+  vector_resize(&number_token.value, 8);
 
   collect_characters(number_token, isdigit_wrapper, char_pointer);
 
@@ -133,12 +142,12 @@ bool value_is(char *value, char *to_compare) {
   return strcmp(value, to_compare) == 0;
 }
 
-token *create_keyword(char **char_pointer) {
-  token *keyword_token = create_token(TOKEN_NAME);
+token create_keyword(char **char_pointer) {
+  token keyword_token = create_token(TOKEN_NAME);
 
   collect_characters(keyword_token, is_valid_keyword_char, char_pointer);
 
-  char_vector value = keyword_token->value;
+  char_vector value = keyword_token.value;
   token_type type;
 
   // TODO: Turn this into hashmap (or switch)
@@ -194,7 +203,7 @@ token *create_keyword(char **char_pointer) {
     type = TOKEN_NAME;
   }
 
-  keyword_token->type = type;
+  keyword_token.type = type;
 
   return keyword_token;
 }
@@ -206,7 +215,7 @@ token *lexer(char_vector chars) {
   // dereferenced token struct and leak the one pointed to
   token *tokens = vector_create();
   vector_resize(&tokens, 16);
-  token *current_token;
+  token current_token;
 
   char current_char;
   // Note: Since we only peek_char here, it's the function's responsibility to pop the char
@@ -345,9 +354,13 @@ token *lexer(char_vector chars) {
       break;
     }
 
-    printf("What's inside: %s\n", token_type_to_string(current_token->type));
-    vector_add(&tokens, *current_token);
+    printf("What's inside: %s\n", token_type_to_string(current_token.type));
+    vector_add(&tokens, current_token);
+    assert(vector_size((vector*)&current_token.value) > 0);
+    char char_at_end_of_string = *(char*)vector_get((vector*)&current_token.value, vector_size((vector*)&current_token.value) - 1);
+    assert(char_at_end_of_string == '\0');
   }
+  vector_add(&tokens, create_token(TOKEN_END));
 
   return tokens;
 }

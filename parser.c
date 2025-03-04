@@ -1,5 +1,6 @@
-#include "parser.h"
+#include "c-tests/test.h"
 #include "c-vector/vec.h"
+#include "parser.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -21,38 +22,14 @@ void return_token(token **token_pointer) {
 }
 
 token *pop_token(token **token_pointer) {
-  token *token = &(**token_pointer);
+  token *current_token = &(**token_pointer);
   advance_token(token_pointer);
-  return token;
+  return current_token;
 }
 
 token *peek_token(token **token_pointer) {
-  token *token = &(**token_pointer);
-  return token;
-}
-
-node *create_node(node_type type) {
-  node *node = malloc(sizeof(node));
-  node->type = type;
-  node->children = vector_create();
-  node->data = vector_create();
-  return node;
-}
-
-// Same thing as create_node but *data dereferenced and put into new vector
-node *create_node_with_vector(node_type type, char_vector data) {
-  node *node = malloc(sizeof(node));
-  node->type = type;
-  node->children = vector_create();
-  node->data = vector_create();
-  for (int i = 0; i < (int)vector_size((vector*)&data); i++) {
-    // Find out how big each element in the vector is
-    // For byte in data, add it to node data
-    vector_add(&node->data, data[i]);
-  }
-  //node->data = vector_copy(data);
-  vector_add(&node->data, *data);
-  return node;
+  token *current_token = &(**token_pointer);
+  return current_token;
 }
 
 bool is_at_end(token **token_pointer) {
@@ -67,6 +44,12 @@ token *expect_token(token_type type, token **token_pointer) {
            token_type_to_string(token->type), token_type_to_string(type));
   }
   return token;
+}
+
+node *create_node(node_type type) {
+  node *current_node = malloc(sizeof(node));
+  current_node->type = type;
+  return current_node;
 }
 
 precedence get_precedence(token_type type) {
@@ -120,10 +103,10 @@ precedence get_precedence(token_type type) {
 node *parse_precedence(precedence precedence, token **token_pointer);
 
 node *parse_number(token **token_pointer) {
-  node *number_node = create_node(NODE_NUMBER);
+  node *number_node = create_node(NODE_NUMBER_LITERAL);
   // Get value from that token that sent us here
   int value = atoi(pop_token(token_pointer)->value);
-  vector_add(&number_node->data, value);
+  number_node->number_literal.value = value;
 
   return number_node;
 }
@@ -140,31 +123,29 @@ node *parse_binary(node *last_expression, token **token_pointer) {
   node *next_expression =
       parse_precedence(get_precedence(operator_token->type) + 1, token_pointer);
 
-  node_type type;
+  operator_type operator;
   switch (operator_token->type) {
   case TOKEN_PLUS:
-    type = NODE_ADD;
+    operator = OPERATOR_ADD;
     break;
   case TOKEN_MINUS:
-    type = NODE_SUBTRACT;
+    operator = OPERATOR_SUBTRACT;
     break;
   case TOKEN_STAR:
-    type = NODE_MULTIPLY;
+    operator = OPERATOR_MULTIPLY;
     break;
   case TOKEN_SLASH:
-    type = NODE_DIVIDE;
+    operator = OPERATOR_DIVIDE;
     break;
   default:
     printf("Error in parse binary");
-    exit(1);
     break;
   }
 
   node *ast = create_node(NODE_EQUATION);
-  vector_resize(&ast->children, 3);
-  vector_add(&ast->children, *create_node(type));
-  vector_add(&ast->children, *last_expression);
-  vector_add(&ast->children, *next_expression);
+  ast->equation.operator = operator;
+  ast->equation.left = last_expression;
+  ast->equation.right = next_expression;
 
   return ast;
 }
@@ -173,17 +154,17 @@ node *parse_unary(token **token_pointer) {
   token *operator_token = pop_token(token_pointer);
   node *expression = parse_precedence(PRECEDENCE_UNARY, token_pointer);
 
-  node_type type;
+  operator_type operator;
   switch (operator_token->type) {
   // +NUMBER does nothing
   case TOKEN_PLUS:
     return expression;
     break;
   case TOKEN_MINUS:
-    type = NODE_NEGATE;
+    operator = OPERATOR_NEGATE;
     break;
   case TOKEN_NOT:
-    type = NODE_NOT;
+    operator = OPERATOR_NOT;
     break;
   default:
     printf("Error in parse unary");
@@ -192,10 +173,9 @@ node *parse_unary(token **token_pointer) {
   }
 
   node *ast = create_node(NODE_EQUATION);
-  ast->children = vector_create();
-  vector_resize(&ast->children, 2);
-  vector_add(&ast->children, *create_node(type));
-  vector_add(&ast->children, *expression);
+  ast->equation.operator = operator;
+  ast->equation.left = expression;
+  ast->equation.right = NULL;
 
   return ast;
 }
@@ -214,15 +194,17 @@ node *parse_precedence(precedence precedence, token **token_pointer) {
     break;
   }
 
-  node *ast;
-  node *last_expression;
-  node *current_expression;
+  node *ast = NULL;
+  node *last_expression = NULL;
+  node *current_expression = NULL;
 
-  // Keep parsing equal or higher precedence values, or ';' is found.
+  // Keep parsing equal or higher precedence values
   // Example: -12 - -6 * (2 + 3);
   while (precedence <= get_precedence(current_token->type)) {
     switch (current_token->type) {
     case TOKEN_SEMI_COLON:
+      // Error here, semi colon not supposed to be in the middle of expression.
+      // It doesn't make sense, but in "get_precedence", semi colon means "just return, don't loop a last time"
       return ast;
 
     case TOKEN_LEFT_PARENTHESES:
@@ -253,17 +235,17 @@ node *parse_precedence(precedence precedence, token **token_pointer) {
     current_token = peek_token(token_pointer);
     last_expression = current_expression;
 
-    // Alright, Idk if this is even the way to do it. Refactor a lot of this and
-    // get it working!
     ast = current_expression;
   }
 
   return ast;
 }
 
-// Wrapper for parse precedence
+// Wrapper for parse_precendense
 node *parse_expression(token **token_pointer) {
-  return parse_precedence(PRECEDENCE_ASSIGNMENT, token_pointer);
+  node *ast = parse_precedence(PRECEDENCE_ASSIGNMENT, token_pointer);
+  expect_token(TOKEN_SEMI_COLON, token_pointer);
+  return ast;
 }
 
 int how_many_in_a_row(token_type type, token **token_pointer) {
@@ -272,7 +254,7 @@ int how_many_in_a_row(token_type type, token **token_pointer) {
     if (peek_token(token_pointer)->type != type) {
       break;
     }
-    // Pop * token
+    // Pop the token
     pop_token(token_pointer);
     number++;
   }
@@ -281,53 +263,50 @@ int how_many_in_a_row(token_type type, token **token_pointer) {
 
 // Parse something like "a = 12 + (9 * 20);"
 node *parse_variable_assignment(token **token_pointer) {
-  token *name = expect_token(TOKEN_NAME, token_pointer);
-  expect_token(TOKEN_EQUALS, token_pointer);
   node *ast = create_node(NODE_VARIABLE_DECLARATION);
-  parse_expression(token_pointer);
+  // TODO: Figure out whether to make new node or roll with 'no type'
+  // ast->variable.type = NULL;
+  ast->variable.name = expect_token(TOKEN_NAME, token_pointer)->value;
+  expect_token(TOKEN_EQUALS, token_pointer);
+  ast->variable.value = parse_expression(token_pointer);
   return ast;
 }
 
 // Prototype for later lines
-node *parse_scope(token **token_pointer, hashmap_vector type_hashmaps, int scope);
+node *parse_scope(scope_context *context, int scope, token **token_pointer);
 
 // Parse a variable or function declaration.
-node *parse_type(token **token_pointer, hashmap_vector type_hashmaps, int scope) {
+node *parse_type(token **token_pointer, scope_context *context, int scope) {
   // Get the type, how many references, then the name of function/variable
-  token *type = expect_token(TOKEN_NAME, token_pointer);
+  type_info type = {
+    .name = expect_token(TOKEN_NAME, token_pointer)->value,
+    .pointer_amount = how_many_in_a_row(TOKEN_STAR, token_pointer),
+  };
+  char_vector name = expect_token(TOKEN_NAME, token_pointer)->value;
 
-  int pointer_amount = how_many_in_a_row(TOKEN_STAR, token_pointer);
-  char_vector pointer_amount_vector = vector_create();
-  vector_add(&pointer_amount_vector, pointer_amount);
-
-  token *name = expect_token(TOKEN_NAME, token_pointer);
+  node *ast = create_node(NODE_NONE);
+  // Set the type_info and name for variables AND functions AND parameters
+  ast->variable.type = type;
+  ast->variable.name = name;
 
   token *current_token = peek_token(token_pointer);
-  node *ast = create_node(NODE_NONE);
-  vector_resize(&ast->children, 4);
-
-
-  // Oh man so messy
-  node *node_type = create_node_with_vector(NODE_TYPE, type->value);
-  node *node_pointer =
-      create_node_with_vector(NODE_POINTER, pointer_amount_vector);
-  node *node_variable = create_node_with_vector(NODE_VARIABLE, name->value);
-
-  vector_add(&ast->children, *node_type);
-  vector_add(&ast->children, *node_pointer);
-  vector_add(&ast->children, *node_variable);
-
   switch (current_token->type) {
   case TOKEN_EQUALS:
     expect_token(TOKEN_EQUALS, token_pointer);
     ast->type = NODE_VARIABLE_DECLARATION;
-    vector_add(&ast->children, *parse_expression(token_pointer));
+    ast->variable.value = parse_expression(token_pointer);
     break;
   case TOKEN_SEMI_COLON:
-    printf("Error in parse type, didn't implement un-initialized variables\n");
+    expect_token(TOKEN_SEMI_COLON, token_pointer);
+    ast->type = NODE_VARIABLE_DECLARATION;
+    ast->variable.value = NULL;
     break;
   case TOKEN_LEFT_PARENTHESES:
+    expect_token(TOKEN_LEFT_PARENTHESES, token_pointer);
     // make vector of parameters and each name add to it
+    // Maybe I should use the parse_type function recursively here?
+    // Yeah, that's probably smart. Or maybe I put this in it's own function.
+    // Basically, it could be a 'struct type varname' instead of just 'type varname'
     if (peek_token(token_pointer)->type == TOKEN_NAME) {
       while(!is_at_end(token_pointer)) {
         // type
@@ -347,7 +326,7 @@ node *parse_type(token **token_pointer, hashmap_vector type_hashmaps, int scope)
     }
 
     ast->type = NODE_FUNCTION_DECLARATION;
-    ast = parse_scope(token_pointer, type_hashmaps, scope + 1);
+    ast = parse_scope(context, scope + 1, token_pointer);
     break;
   default:
     // Error
@@ -357,50 +336,61 @@ node *parse_type(token **token_pointer, hashmap_vector type_hashmaps, int scope)
   return ast;
 }
 
-// Checks if has two name tokens in a row, example:
-// int variable = ...
-//
-// Why does this work again? I come back to this after 3 months and have no idea
-// what I was thinking here
-bool is_token_type(token **token_pointer) {
-  pop_token(token_pointer);
-  token *current_token = peek_token(token_pointer);
-
-  bool is_token_type = false;
-  if (current_token->type == TOKEN_NAME) {
-    is_token_type = true;
-  }
-  return_token(token_pointer);
-  return is_token_type;
-}
-
 int compare_string_vectors(const void *a, const void *b, void* _udata) {
-  // Would use char_vector here but LSP complains
-  const char *type1 = a;
-  const char *type2 = b;
-  return strcmp(type1, type2);
+  const char_vector string1 = (char_vector)a;
+  const char_vector string2 = (char_vector)b;
+  return strncmp(string1, string2, vector_size((vector*)&string1));
+  vec_size_t i = 0;
+  int difference_score = 0;
+  while(true) {
+    // If 'i' is bigger than either vector, stop.
+    if (i >= vector_size((vector*)&string1)){
+      break;
+    }
+    if (i >= vector_size((vector*)&string2)){
+      break;
+    }
+    difference_score += abs(vector_get(&string2, i) - vector_get(&string1, i));
+    i++;
+  }
+  return difference_score;
 }
 
 
 uint64_t hash_string_vector(const void *data, uint64_t seed0, uint64_t seed1) {
-  const char *char_vector = data;
-  const size_t char_vector_size = vector_size((vector*)&char_vector);
-  return hashmap_sip(char_vector, sizeof(char) * char_vector_size, seed0, seed1);
+  const char_vector string = (char_vector)data;
+  const size_t char_vector_size = vector_size((vector*)&string);
+  return hashmap_sip(string, sizeof(char) * char_vector_size, seed0, seed1);
+}
+
+bool is_in_any_of_context_hashmaps(scope_context *context, char_vector name) {
+  hashmap_vector type_hashmaps = context->type_hashmaps;
+  // Loop through every type hashmap and check whether the name is in any of them.
+  // Should make this a generic function but who cares.
+  for(vec_size_t i = 0; i < vector_size((vector*)&type_hashmaps); i++) {
+    if(hashmap_get(type_hashmaps[i], name) != NULL) {
+      return true;
+    }
+  }
+  return false;
 }
 
 // Parses a scope (block of tokens between braces) and turns it into an abstract syntax tree.
-node *parse_scope(token **token_pointer, hashmap_vector type_hashmaps, int scope) {
-  token *current_token = peek_token(token_pointer);
-  node *ast;
-
+node *parse_scope(scope_context *context, int scope, token **token_pointer){
   struct hashmap *type_hashmap = hashmap_new(sizeof(char_vector), 0, 0, 0, hash_string_vector, compare_string_vectors, NULL, NULL);
-  vector_add(&type_hashmaps, type_hashmap);
+  // If the vector has a previous hashmap already allocated, free it
+  if(vector_has((vector*)&context->type_hashmaps, scope)) {
+    hashmap_free(vector_get(&context->type_hashmaps, scope));
+  }
+  vector_add(&context->type_hashmaps, type_hashmap);
 
-  while(true) {
+  token *current_token = peek_token(token_pointer);
+  printf("%ld\n", hash_string_vector(current_token->value, 0, 0));
+  printf(hashmap_get(context->type_hashmaps[0], current_token->value) ? "Ye it is valid get\n" : "nah it's null\n");
+  node *ast = create_node(NODE_BLOCK);
+  // Keep parsing individual statements until end of scope
+  while(current_token->type != TOKEN_END) {
     current_token = peek_token(token_pointer);
-    // For types, we have a hashmap corresponding to our scope, and
-    // before saying a name = variable, we check if it's in the hashmap.
-    // It is? Then we run parse_type instead of parse_variable_assignment
     switch (current_token->type) {
     default:
       printf("Error in parse block, unknown type '%s'\n",
@@ -415,15 +405,16 @@ node *parse_scope(token **token_pointer, hashmap_vector type_hashmaps, int scope
     case TOKEN_NAME:
       // If name is in 'type' hashmap, means parse it like a type
       // Ex: int number = 0;
-      if (hashmap_get(type_hashmap, current_token->value) != NULL) {
-        ast = parse_type(token_pointer, type_hashmap, scope);
+      if (is_in_any_of_context_hashmaps(context, current_token->value)) {
+        ast = parse_type(token_pointer, context, scope);
       } else {
         ast = parse_variable_assignment(token_pointer);
       }
       break;
-
     case TOKEN_END:
-      ast = create_node(NODE_END);
+      // Add ending notifier
+      expect_token(TOKEN_END, token_pointer);
+      vector_add(&ast->block.nodes, *create_node(NODE_END));
       break;
     }
   }
@@ -463,23 +454,16 @@ void print_ast(node *ast, int indent_level) {
     tabs[i] = '\t';
   }
 
-  // Get data (value) from node
-  char_vector value = vector_create();
-  for (int i = 0; i < (int)vector_size((vector*)&ast->data); i++) {
-    vector_add(&value, ast->data[i]);
-  }
-  // Just in case I didn't null-terminate it (very likely the case)
-  vector_add(&value, '\0');
-
-  // Problem with this print method: numbers aren't printed right. Have to switch
-  // based on if this is expected string or digit input
-  //
-  // Print out this node's type + value
-  printf("%s%s, Value: %s\n", tabs, node_type_to_string(ast->type), value);
+  // Print out this node's type
+  printf("%s%s\n", tabs, node_type_to_string(ast->type));
 
   // Last: Print children
-  for (int i = 0; i < (int)vector_size((vector*)&ast->children); i++) {
-    print_ast(&ast->children[i], indent_level + 1);
+  // If the node's type is a block, print it's children.
+  if (ast->type != NODE_BLOCK) {
+    return;
+  }
+  for (int i = 0; i < (int)vector_size((vector*)&ast->block.nodes); i++) {
+    print_ast(vector_get(&ast->block.nodes, i), indent_level + 1);
   }
 
   // TODO: print out the value of this node
@@ -488,12 +472,33 @@ void print_ast(node *ast, int indent_level) {
 // Takes in tokens, outputs an Abstract Syntax Tree (AST)
 node *parser(token *tokens) {
   // Pointer to pointer so we can store state of which token we're on
+  token *end_token = (token*)vector_last(&tokens);
+  assert(end_token->type == TOKEN_END);
+
   token **token_pointer = &tokens;
   // Requires: access tokens, context info (types, ...), depth/indentation/scope
   // typedef int myint;
   // myint i = 0;
-  hashmap_vector type_hashmaps = vector_create();
-  node *ast = parse_scope(token_pointer, type_hashmaps, 0);
+  scope_context context = {
+    .type_hashmaps = vector_create(),
+    .var_hashmaps = vector_create(),
+  };
+  struct hashmap *type_hashmap = hashmap_new(sizeof(char_vector), 0, 0, 0, hash_string_vector, compare_string_vectors, NULL, NULL);
+  vector_add(&context.type_hashmaps, type_hashmap);
+  char_vector int_type = vector_create();
+  vector_add(&int_type, 'i');
+  vector_add(&int_type, 'n');
+  vector_add(&int_type, 't');
+  vector_add(&int_type, '\0');
+  printf("%ld\n", hash_string_vector(int_type, 0, 0));
+
+  // Just a reminder, 'hashmap_set' takes in hashmap and object.
+  // Object has the key (usually object.name), and itself as the value.
+  // That is why it is only the 'key' instead of 'key:value'
+  hashmap_set(type_hashmap, int_type);
+
+  // Parse scope (with a scope number of one, we declared int for 0'th layer)
+  node *ast = parse_scope(&context, 1, token_pointer);
 
   print_ast(ast, 0);
 

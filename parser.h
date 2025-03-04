@@ -5,7 +5,36 @@
 #include "lexer.h"
 #include <stdio.h>
 
+// TODO: Should I use "loops" and "if"s instead of "while" and "for" and "elif"?
+// Basically, generic names over very specific ones? We could just expand the
+// for statement to equal a while loop and I think it would work fine.
+#define ITERATE_NODES_AND(X)                                                   \
+  X(NODE_START)                                                                \
+  X(NODE_END)                                                                  \
+  X(NODE_NONE)                                                                 \
+  X(NODE_BLOCK)                                                                \
+                                                                               \
+  X(NODE_NUMBER_LITERAL)                                                       \
+  X(NODE_EQUATION)                                                             \
+                                                                               \
+  X(NODE_IF)                                                                   \
+  X(NODE_ELSEIF)                                                               \
+  X(NODE_FOR)                                                                  \
+  X(NODE_WHILE)                                                                \
+                                                                               \
+  X(NODE_CALL_FUNCTION)                                                        \
+  X(NODE_RETURN)                                                               \
+                                                                               \
+  X(NODE_VARIABLE_DECLARATION)                                                 \
+  X(NODE_FUNCTION_DECLARATION)                                                 \
+  X(NODE_PARAMETER)
 
+typedef enum { ITERATE_NODES_AND(GENERATE_ENUM) } node_type;
+
+// 90% sure this "extern" is required. Remove at your own risk.
+extern const char *node_type_strings[];
+// Call this function to get string from node type
+const char *node_type_to_string(node_type type);
 typedef enum {
   PRECEDENCE_NONE,
   PRECEDENCE_ASSIGNMENT, // =
@@ -20,101 +49,94 @@ typedef enum {
   PRECEDENCE_PRIMARY,
 } precedence;
 
-#define ITERATE_NODES_AND(X)                                                   \
-  X(NODE_START)                                                                \
-  X(NODE_END)                                                                  \
-  X(NODE_NONE)                                                                 \
-                                                                               \
-  X(NODE_CALL_FUNCTION)                                                        \
-  X(NODE_RETURN)                                                               \
-                                                                               \
-  X(NODE_SEPARATOR)                                                            \
-                                                                               \
-  X(NODE_POINTER)                                                              \
-  X(NODE_TYPE)                                                                 \
-  X(NODE_VARIABLE)                                                             \
-  X(NODE_NUMBER)                                                               \
-  X(NODE_STRING)                                                               \
-                                                                               \
-  X(NODE_EQUATION)                                                             \
-  X(NODE_ADD)                                                                  \
-  X(NODE_SUBTRACT)                                                             \
-  X(NODE_MULTIPLY)                                                             \
-  X(NODE_DIVIDE)                                                               \
-                                                                               \
-  X(NODE_COMPARISON)                                                           \
-  X(NODE_NEGATE)                                                               \
-  X(NODE_NOT)                                                                  \
-  X(NODE_AND)                                                                  \
-  X(NODE_OR)                                                                   \
-  X(NODE_XOR)                                                                  \
-                                                                               \
-  X(NODE_VARIABLE_DECLARATION)                                                 \
-  X(NODE_FUNCTION_DECLARATION)                                                 \
-  X(NODE_PARAMETER)
+typedef enum {
+  OPERATOR_ADD,
+  OPERATOR_SUBTRACT,
+  OPERATOR_MULTIPLY,
+  OPERATOR_DIVIDE,
+  OPERATOR_NEGATE, // Not same as 'not', is for making number negative
+  OPERATOR_NOT,
+  OPERATOR_AND,
+  OPERATOR_OR,
+  OPERATOR_XOR,
+} operator_type;
 
-typedef enum { ITERATE_NODES_AND(GENERATE_ENUM) } node_type;
+typedef struct parameter *parameter_vector;
+typedef struct node *node_vector;
+typedef struct hashmap **hashmap_vector;
 
-// 90% sure this "extern" is required. Remove at your own risk.
-extern const char *node_type_strings[];
-// Call this function to get string from node type
-const char *node_type_to_string(node_type type);
+// TODO: What's the difference between a "node" and a "statement"?
+// I removed statement because Idk what a statement is, and it was complicating
+// this script.
 
+// TODO: String node?
 
-/*
-struct string {
-  char_vector value;
-}
-struct number {
-  int value;
-}
-*/
-// Operator is binary operator (+-*/%^&) or unary operator
-// a and b are statements
-/*
-struct equation {
-  struct token_type operator;
-  struct statement a;
-  struct statement b; // Optional based on whether a binary or unary operation
-}
-struct variable {
-  type;
-  pointer_amount;
-  name;
-  value; // (Statement or maybe Equation?) (Optional)
-}
-struct statement {
-  // is equal to variable declaration/assignment, math operators, conditions, function call, etc.
-  // Statements are used everywhere, for example in while loops or for loops, or
-  // declaring a variable in a function. Idk what a statement would have, though.
-}
-struct function {
-  type;
-  pointer_amount;
-  name;
-  parameters;
-  block;
-}
-// Parameter could also be '...', but I'm not sure how to implement that yet.
-struct parameter {
-  type;
-  pointer_amount;
-  name;
-}
-struct function_call {
-  name;
-  parameters;
-}
-*/
+// A type, like 'int'
+// Includes: name, type size, what it contains (char[30] name, int id)
+typedef struct {
+  char_vector name;
+  int pointer_amount;
+} type_info;
+// A struct definition should be able to be used like a type,
+// but the actual container of a struct should be something like this:
+// 
+// char_vector name
+// int size
+// parameter_vector members // parameter_vector would work here because it's basically the same thing
+
 typedef struct node {
   node_type type;
-  struct node *children; // Always a vector!
-  char *data;            // Always a vector!
+  union {
+    struct {
+      int value;
+    } number_literal;
+    // Operator is binary operator (+-*/%^&) or unary operator
+    // a and b are statements
+    struct {
+      operator_type operator;
+      struct node *left;
+      struct node *right; // Optional based on whether a binary or unary operation
+    } equation;
+    struct {
+      type_info type;
+      char_vector name;
+      struct node *value; // Equation after the equals (=) sign (Optional)
+    } variable;
+    struct {
+      struct node *condition;
+      struct node *success;
+      struct node *fail; // Else path (Optional)
+    } if_statement;
+    struct {
+      struct node *condition;
+      struct node *body;
+    } loop;
+    // Parameter could also be '...', but I'm not sure how to implement that
+    // yet.
+    struct {
+      type_info type;
+      char_vector name;
+    } parameter;
+    struct {
+      type_info type;
+      char_vector name;
+      parameter_vector parameters;
+      struct node *body;
+    } function;
+    struct {
+      char_vector function_name;
+      parameter_vector parameters;
+    } function_call;
+    struct {
+      node_vector nodes;
+    } block;
+  };
 } node;
 
-
-
-typedef struct hashmap** hashmap_vector;
+typedef struct {
+  hashmap_vector type_hashmaps;
+  hashmap_vector var_hashmaps;
+} scope_context;
 
 // ALL OF THESE WILL GO INTO NEXT COMPILATION STEP
 // Literally types like int or char* or struct node
