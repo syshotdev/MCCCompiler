@@ -371,10 +371,14 @@ node *parse_scope(scope_context *context, int scope, token **token_pointer){
   node *ast = create_node(NODE_BLOCK);
   // Keep parsing individual statements until end of scope
   token *current_token = peek_token(token_pointer);
+  char_vector int_type = _vector_from("int", sizeof(char), 4);
   // I dont get this....
-  hashmap_set(type_hashmap, current_token->value);
+  vector_print_string(&int_type);
+  vector_print_string(&current_token->value);
+  hashmap_set(context->type_hashmaps[0], int_type);
+  //hashmap_set(context->type_hashmaps[0], current_token->value);
   printf(hashmap_get(context->type_hashmaps[0], current_token->value) ? "Ye it is valid get\n" : "nah it's null\n");
-  printf("strncmp: %d\n", strncmp(current_token->value, "int", vector_size((vector*)&current_token->value) - 1));
+  printf("strncmp: %d\n", strncmp(current_token->value, int_type, vector_size((vector*)&current_token->value)));
   while(current_token->type != TOKEN_END) {
     current_token = peek_token(token_pointer);
     switch (current_token->type) {
