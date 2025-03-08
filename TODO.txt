@@ -1,10 +1,19 @@
-Stack-based allocations for nodes
-Node array = array of node structs rather than pointers
-current_<type> rather than <type>, because C compiler gets very confused
-AST -> current_node
+Parse loops
+Rename parse_scope to parse_block, rename print_ast to print_block
+Add switch statement to print_block that prints out each type
+
+Standardize vector_add and vector_get, either use addresses or actual objects.
+Rename resize to reserve, resize sounds like it would change size rather than make capacity bigger.
+vector_create(initial_capacity)
+Make template thing for parser, aka <type> <name> <statement>, and it will make a node with those details
 
 Completed:
+Remove all unnecessary code
+AST -> current_node
+current_<type> rather than <type>, because C compiler gets very confused
+Node array = array of node structs rather than pointers
 Error handling for unexpected tokens
 
 Nah:
+Stack-based allocations for nodes
 Turn all "token_pointers" to an index in the array, rather than a pointer.

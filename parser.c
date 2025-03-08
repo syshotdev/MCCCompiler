@@ -7,9 +7,13 @@
 
 
 const char *node_type_strings[] = {ITERATE_NODES_AND(GENERATE_STRING)};
+const char *operator_type_strings[] = {ITERATE_OPERATORS_AND(GENERATE_STRING)};
 
 const char *node_type_to_string(node_type type) {
   return enum_to_string(type, node_type_strings);
+}
+const char *operator_type_to_string(operator_type type) {
+  return enum_to_string(type, operator_type_strings);
 }
 
 void advance_token(token **token_pointer) {
@@ -205,6 +209,8 @@ node *parse_precedence(precedence precedence, token **token_pointer) {
       // It doesn't make sense, but in "get_precedence", semi colon means "just return, don't loop a last time"
       return current_node;
 
+    // Imagine a scenario like this: (get_object()->number++) + 5
+    // Idk but there was a problem when I was thinking about it
     case TOKEN_LEFT_PARENTHESES:
       current_expression = parse_grouping(token_pointer);
       break;
@@ -214,13 +220,28 @@ node *parse_precedence(precedence precedence, token **token_pointer) {
       break;
 
     case TOKEN_NAME:
+    case TOKEN_DOT:
       // Check if variable name or function call
       break;
 
+    case TOKEN_EQUALS_EQUALS:
+    case TOKEN_NOT_EQUALS:
+    case TOKEN_LESS_THAN:
+    case TOKEN_LESS_THAN_EQUALS:
+    case TOKEN_GREATER_THAN:
+    case TOKEN_GREATER_THAN_EQUALS:
+    case TOKEN_AMPERSAND:
+    case TOKEN_AND:
+    case TOKEN_PIPE:
+    case TOKEN_OR:
+    case TOKEN_CARET:
     case TOKEN_PLUS:
+    case TOKEN_PLUS_PLUS:
     case TOKEN_MINUS:
+    case TOKEN_MINUS_MINUS:
     case TOKEN_STAR:
     case TOKEN_SLASH:
+    case TOKEN_PERCENT:
       current_expression = parse_binary(last_expression, token_pointer);
       break;
 
@@ -333,6 +354,16 @@ node *parse_type(token **token_pointer, scope_context *context, int scope) {
   return ast;
 }
 
+node *parse_loop(token **token_pointer) {
+  int i = 0;
+  while((bool)(i + 1 < 5)) {
+
+  }
+  // Uhhh, Idk what to do about parsing types in like for loops
+  // Condition
+  // Block of code
+}
+
 int compare_string_vectors(const void *a, const void *b, void* _udata) {
   const char_vector string1 = (char_vector)a;
   const char_vector string2 = (char_vector)b;
@@ -372,11 +403,6 @@ node *parse_scope(scope_context *context, int scope, token **token_pointer){
   // Keep parsing individual statements until end of scope
   token *current_token = peek_token(token_pointer);
   char_vector int_type = _vector_from("int", sizeof(char), 4);
-  // I dont get this....
-  vector_print_string(&int_type);
-  vector_print_string(&current_token->value);
-  hashmap_set(context->type_hashmaps[0], int_type);
-  //hashmap_set(context->type_hashmaps[0], current_token->value);
   printf(hashmap_get(context->type_hashmaps[0], current_token->value) ? "Ye it is valid get\n" : "nah it's null\n");
   printf("strncmp: %d\n", strncmp(current_token->value, int_type, vector_size((vector*)&current_token->value)));
   while(current_token->type != TOKEN_END) {
@@ -420,15 +446,41 @@ void print_ast(node *ast, int indent_level) {
 
   printf("%s\n", node_type_to_string(ast->type));
 
-  // If node's type is not block, return, otherwise print it's children
-  if (ast->type != NODE_BLOCK) {
-    return;
+  node *next_ast = NULL;
+  switch(ast->type) {
+  default:
+    break;
+  case NODE_BLOCK:
+    for (int i = 0; i < (int)vector_size((vector*)&ast->block.nodes); i++) {
+      print_ast(vector_get(&ast->block.nodes, i), indent_level + 1);
+    }
+    break;
+  case NODE_VARIABLE_DECLARATION:
+    for (int i = 0; i < indent_level; i++) {
+      putchar('\t');
+    }
+    vector_print_string(&ast->variable.name);
+    printf("\n");
+    next_ast = ast->variable.value;
+    if (next_ast != NULL) {
+      print_ast(next_ast, indent_level + 1);
+    }
+    break;
+  case NODE_EQUATION:
+    for (int i = 0; i < indent_level; i++) {
+      putchar('\t');
+    }
+    printf("%s\n", operator_type_to_string(ast->equation.operator));
+    next_ast = ast->equation.left;
+    if (next_ast != NULL) {
+      print_ast(next_ast, indent_level + 1);
+    }
+    next_ast = ast->equation.right;
+    if (next_ast != NULL) {
+      print_ast(next_ast, indent_level + 1);
+    }
+    break;
   }
-  for (int i = 0; i < (int)vector_size((vector*)&ast->block.nodes); i++) {
-    print_ast(vector_get(&ast->block.nodes, i), indent_level + 1);
-  }
-
-  // TODO: print out the value of this node
 }
 
 // Takes in tokens, outputs an Abstract Syntax Tree (AST)
@@ -445,23 +497,16 @@ node *parser(token *tokens) {
     .type_hashmaps = vector_create(),
     .var_hashmaps = vector_create(),
   };
+
   struct hashmap *type_hashmap = hashmap_new(sizeof(char_vector), 0, 0, 0, hash_string_vector, compare_string_vectors, NULL, NULL);
   vector_add(&context.type_hashmaps, type_hashmap);
-  //char_vector int_type = _vector_from("int", sizeof(char), 4);
-//vector_create();
-    // When I do this, it errors out my program (Even when I add +1 to strlen)
-  // But when I do this, everything works as expected.
-  /*
-  vector_add(&int_type, 'i');
-  vector_add(&int_type, 'n');
-  vector_add(&int_type, 't');
-  vector_add(&int_type, '\0');
-  */
+  char_vector int_type = _vector_from("int", sizeof(char), 4);
+  hashmap_set(context.type_hashmaps[0], int_type);
 
   // Just a reminder, 'hashmap_set' takes in hashmap and object.
   // Object has the key (usually object.name), and itself as the value.
   // That is why it is only the 'key' instead of 'key:value'
-  //hashmap_set(type_hashmap, int_type);
+  hashmap_set(type_hashmap, int_type);
 
   // Parse scope (with a scope number of one, we declared int for 0'th layer)
   node *ast = parse_scope(&context, 1, token_pointer);

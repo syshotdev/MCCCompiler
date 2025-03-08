@@ -29,12 +29,30 @@
   X(NODE_FUNCTION_DECLARATION)                                                 \
   X(NODE_PARAMETER)
 
+// 'negate' is not same as 'not', is for making number negative
+
+#define ITERATE_OPERATORS_AND(X)                                               \
+  X(OPERATOR_ADD)                                                              \
+  X(OPERATOR_SUBTRACT)                                                         \
+  X(OPERATOR_MULTIPLY)                                                         \
+  X(OPERATOR_DIVIDE)                                                           \
+  X(OPERATOR_NEGATE)                                                           \
+  X(OPERATOR_NOT)                                                              \
+  X(OPERATOR_AND)                                                              \
+  X(OPERATOR_OR)                                                               \
+  X(OPERATOR_XOR)                                                              \
+
 typedef enum { ITERATE_NODES_AND(GENERATE_ENUM) } node_type;
+typedef enum { ITERATE_OPERATORS_AND(GENERATE_ENUM) } operator_type;
 
 // 90% sure this "extern" is required. Remove at your own risk.
 extern const char *node_type_strings[];
+extern const char *operator_type_strings[];
+
 // Call this function to get string from node type
 const char *node_type_to_string(node_type type);
+const char *operator_type_to_string(operator_type type);
+
 typedef enum {
   PRECEDENCE_NONE,
   PRECEDENCE_ASSIGNMENT, // =
@@ -49,25 +67,9 @@ typedef enum {
   PRECEDENCE_PRIMARY,
 } precedence;
 
-typedef enum {
-  OPERATOR_ADD,
-  OPERATOR_SUBTRACT,
-  OPERATOR_MULTIPLY,
-  OPERATOR_DIVIDE,
-  OPERATOR_NEGATE, // Not same as 'not', is for making number negative
-  OPERATOR_NOT,
-  OPERATOR_AND,
-  OPERATOR_OR,
-  OPERATOR_XOR,
-} operator_type;
-
 typedef struct parameter *parameter_vector;
 typedef struct node *node_vector;
 typedef struct hashmap **hashmap_vector;
-
-// TODO: What's the difference between a "node" and a "statement"?
-// I removed statement because Idk what a statement is, and it was complicating
-// this script.
 
 // TODO: String node?
 
@@ -79,10 +81,12 @@ typedef struct {
 } type_info;
 // A struct definition should be able to be used like a type,
 // but the actual container of a struct should be something like this:
-// 
+//
 // char_vector name
 // int size
-// parameter_vector members // parameter_vector would work here because it's basically the same thing
+// parameter_vector members 
+// parameter_vector would work here because it's
+// basically the same thing (as node?)
 
 typedef struct node {
   node_type type;
