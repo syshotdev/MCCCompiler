@@ -15,7 +15,11 @@
   X(NODE_BLOCK)                                                                \
                                                                                \
   X(NODE_NUMBER_LITERAL)                                                       \
+  X(NODE_VARIABLE)                                                             \
   X(NODE_EQUATION)                                                             \
+                                                                               \
+  X(NODE_STRUCT_MEMBER_GET)                                                    \
+  X(NODE_ARRAY_GET)                                                            \
                                                                                \
   X(NODE_IF)                                                                   \
   X(NODE_ELSEIF)                                                               \
@@ -41,6 +45,8 @@
   X(OPERATOR_AND)                                                              \
   X(OPERATOR_OR)                                                               \
   X(OPERATOR_XOR)                                                              \
+  X(OPERATOR_DEREFERENCE)                                                      \
+  X(OPERATOR_REFERENCE)                                                        \
 
 typedef enum { ITERATE_NODES_AND(GENERATE_ENUM) } node_type;
 typedef enum { ITERATE_OPERATORS_AND(GENERATE_ENUM) } operator_type;
@@ -67,26 +73,21 @@ typedef enum {
   PRECEDENCE_PRIMARY,
 } precedence;
 
-typedef struct parameter *parameter_vector;
-typedef struct node *node_vector;
-typedef struct hashmap **hashmap_vector;
-
-// TODO: String node?
-
 // A type, like 'int'
 // Includes: name, type size, what it contains (char[30] name, int id)
 typedef struct {
   char_vector name;
   int pointer_amount;
 } type_info;
-// A struct definition should be able to be used like a type,
-// but the actual container of a struct should be something like this:
-//
-// char_vector name
-// int size
-// parameter_vector members 
-// parameter_vector would work here because it's
-// basically the same thing (as node?)
+// Parameter could also be '...', but I'm not sure how to implement that
+typedef struct {
+  type_info type;
+  char_vector name;
+} parameter;
+
+typedef parameter *parameter_vector;
+typedef struct node **node_vector;
+typedef struct hashmap **hashmap_vector;
 
 typedef struct node {
   node_type type;
@@ -94,6 +95,13 @@ typedef struct node {
     struct {
       int value;
     } number_literal;
+    struct {
+      char_vector name;
+    } variable;
+    struct {
+      char_vector name;
+      parameter_vector members;
+    } structure;
     // Operator is binary operator (+-*/%^&) or unary operator
     // a and b are statements
     struct {
@@ -105,7 +113,15 @@ typedef struct node {
       type_info type;
       char_vector name;
       struct node *value; // Equation after the equals (=) sign (Optional)
-    } variable;
+    } variable_declaration;
+    struct {
+      char_vector name;
+      struct node *from;
+    } struct_member_get;
+    struct {
+      struct node *index_expression;
+      struct node *from;
+    } array_get;
     struct {
       struct node *condition;
       struct node *success;
@@ -115,12 +131,6 @@ typedef struct node {
       struct node *condition;
       struct node *body;
     } loop;
-    // Parameter could also be '...', but I'm not sure how to implement that
-    // yet.
-    struct {
-      type_info type;
-      char_vector name;
-    } parameter;
     struct {
       type_info type;
       char_vector name;
@@ -128,8 +138,8 @@ typedef struct node {
       struct node *body;
     } function;
     struct {
-      char_vector function_name;
-      parameter_vector parameters;
+      struct node *function_expression;
+      node_vector inputs;
     } function_call;
     struct {
       node_vector nodes;
