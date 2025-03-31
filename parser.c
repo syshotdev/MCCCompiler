@@ -108,11 +108,22 @@ bool is_type(scope_context *context, char_vector name) {
   return false;
 }
 
+bool should_parse_unary(token_type type) {
+  switch (type) {
+  default:
+    return false;
+  case TOKEN_MINUS:
+  case TOKEN_PLUS:
+  case TOKEN_NOT:
+    return true;
+  }
+}
+
 // Prototype for later lines
 node *parse_block(scope_context *context, int scope, token **token_pointer);
 // Prototype because it complains about multiple function definitions (It's used
 // before it's defined).
-node *parse_precedence(precedence precedence, token **token_pointer);
+node *parse_expression(precedence precedence, token **token_pointer);
 
 precedence get_precedence(token_type type) {
   precedence precedence = PRECEDENCE_ASSIGNMENT;
@@ -171,46 +182,49 @@ node *parse_number(token **token_pointer) {
 
 node *parse_grouping(token **token_pointer) {
   expect_token(TOKEN_LEFT_PARENTHESES, token_pointer);
-  node *current_node = parse_precedence(PRECEDENCE_ASSIGNMENT, token_pointer);
+  node *expression = parse_expression(PRECEDENCE_ASSIGNMENT, token_pointer);
+  assert(expression != NULL);
   expect_token(TOKEN_RIGHT_PARENTHESES, token_pointer);
-  return current_node;
+  return expression;
 }
 
 node *parse_binary(node *last_expression, token **token_pointer) {
   token *operator_token = pop_token(token_pointer);
-  node *next_expression =
-      parse_precedence(get_precedence(operator_token->type) + 1, token_pointer);
+  node *next_expression = parse_expression(get_precedence(operator_token->type) + 1, token_pointer);
+  assert(last_expression != NULL);
+  assert(next_expression != NULL);
 
   operator_type operator;
   switch (operator_token->type) {
   case TOKEN_PLUS:
-    operator= OPERATOR_ADD;
+    operator = OPERATOR_ADD;
     break;
   case TOKEN_MINUS:
-    operator= OPERATOR_SUBTRACT;
+    operator = OPERATOR_SUBTRACT;
     break;
   case TOKEN_STAR:
-    operator= OPERATOR_MULTIPLY;
+    operator = OPERATOR_MULTIPLY;
     break;
   case TOKEN_SLASH:
-    operator= OPERATOR_DIVIDE;
+    operator = OPERATOR_DIVIDE;
     break;
   default:
     printf("Error in parse binary");
     break;
   }
 
-  node *ast = create_node(NODE_EQUATION);
-  ast->equation.operator= operator;
-  ast->equation.left = last_expression;
-  ast->equation.right = next_expression;
+  node *current_node = create_node(NODE_EQUATION);
+  current_node->equation.operator = operator;
+  current_node->equation.left = last_expression;
+  current_node->equation.right = next_expression;
 
-  return ast;
+  return current_node;
 }
 
 node *parse_unary(token **token_pointer) {
   token *operator_token = pop_token(token_pointer);
-  node *expression = parse_precedence(PRECEDENCE_UNARY, token_pointer);
+  node *expression = parse_expression(PRECEDENCE_UNARY, token_pointer);
+  assert(expression != NULL);
 
   operator_type operator;
   switch (operator_token->type) {
@@ -219,10 +233,10 @@ node *parse_unary(token **token_pointer) {
     return expression;
     break;
   case TOKEN_MINUS:
-    operator= OPERATOR_NEGATE;
+    operator = OPERATOR_NEGATE;
     break;
   case TOKEN_NOT:
-    operator= OPERATOR_NOT;
+    operator = OPERATOR_NOT;
     break;
   default:
     printf("Error in parse unary");
@@ -230,21 +244,18 @@ node *parse_unary(token **token_pointer) {
   }
 
   node *current_node = create_node(NODE_EQUATION);
-  current_node->equation.operator= operator;
+  current_node->equation.operator = operator;
   current_node->equation.left = expression;
   current_node->equation.right = NULL;
 
   return current_node;
 }
 
+// variable.function_pointer(expression, expression)
+// We don't care about what's after this call
 node *parse_function_call(node *function_expression, token **token_pointer) {
-  // Function expression is the stuff before parentheses
-  // `variable.function_pointer`
-  // (
-  // expression, expression
-  // )
-  // we don't care about what's after this call
-  //
+  assert(function_expression != NULL);
+
   node *current_node = create_node(NODE_CALL_FUNCTION);
   current_node->function_call.function_expression = function_expression;
   current_node->function_call.inputs = vector_create();
@@ -252,10 +263,10 @@ node *parse_function_call(node *function_expression, token **token_pointer) {
   expect_token(TOKEN_LEFT_PARENTHESES, token_pointer);
   // Loop till end or TOKEN_RIGHT_PARENTHESES
   // Example: func(1 + 5 + a, "string");
-  while (!is_at_end(token_pointer) &&
-         peek_token(token_pointer)->type != TOKEN_RIGHT_PARENTHESES) {
-    vector_add(&current_node->function_call.inputs,
-               parse_precedence(PRECEDENCE_ASSIGNMENT, token_pointer));
+  while (!is_at_end(token_pointer) && peek_token(token_pointer)->type != TOKEN_RIGHT_PARENTHESES) {
+    node *parameter_expression = parse_expression(PRECEDENCE_ASSIGNMENT, token_pointer);
+    vector_add(&current_node->function_call.inputs, parameter_expression);
+    assert(vector_last(&current_node->function_call.inputs) == parameter_expression);
     // If we parse expression and token on right is anything but comma or
     // parentheses, syntax error
     if (peek_token(token_pointer)->type != TOKEN_RIGHT_PARENTHESES) {
@@ -267,122 +278,112 @@ node *parse_function_call(node *function_expression, token **token_pointer) {
   return current_node;
 }
 
-node *parse_precedence(precedence precedence, token **token_pointer) {
+node *check_or_create_function_call(node *variable_expression, token **token_pointer) {
+  assert(variable_expression != NULL);
+  if (peek_token(token_pointer)->type == TOKEN_LEFT_PARENTHESES) {
+    return parse_function_call(variable_expression, token_pointer);
+  } else {
+    return variable_expression;
+  }
+}
+
+node *parse_struct_member_get(node *last_expression, token **token_pointer) {
+  assert(last_expression->type == NODE_VARIABLE_DECLARATION);
+  expect_token(TOKEN_DOT, token_pointer);
+
+  node *current_node = create_node(NODE_STRUCT_MEMBER_GET);
+  // Last expression is variable (variable. <-we're here)
+  current_node->struct_member_get.from = last_expression;
+  current_node->struct_member_get.name = pop_token(token_pointer)->value;
+  // Now, we've parsed to here: (variable.member <-we're here)
+  current_node = check_or_create_function_call(current_node, token_pointer);
+  return current_node;
+}
+
+node *switch_expression(node *last_expression, node *current_expression, token_type type, token **token_pointer) {
+  switch (type) {
+  case TOKEN_COMMA:
+  case TOKEN_SEMI_COLON:
+    // If this path is taken, it means a function overstepped it's boundaries and met
+    // a semicolon or a comma. For now, an expression is numbers, variables, and function
+    // calls, and commas do not mean you can put several expressions in the same place.
+    assert("Error in switch_expression: This path isn't supposed to be reached." == NULL);
+    break;
+
+  case TOKEN_NUMBER:
+    current_expression = parse_number(token_pointer);
+    break;
+
+  // Imagine a scenario like this: (get_object()->number++) + 5
+  case TOKEN_LEFT_PARENTHESES:
+    current_expression = parse_grouping(token_pointer);
+    break;
+
+  case TOKEN_DOT:
+    current_expression = parse_struct_member_get(last_expression, token_pointer);
+    break;
+
+  // We also gotta check a dereference (*) before this token
+  case TOKEN_NAME:
+    current_expression = create_node(NODE_VARIABLE);
+    current_expression->variable.name = pop_token(token_pointer)->value;
+    current_expression = check_or_create_function_call(current_expression, token_pointer);
+    break;
+
+  case TOKEN_EQUALS_EQUALS:
+  case TOKEN_NOT_EQUALS:
+  case TOKEN_LESS_THAN:
+  case TOKEN_LESS_THAN_EQUALS:
+  case TOKEN_GREATER_THAN:
+  case TOKEN_GREATER_THAN_EQUALS:
+  case TOKEN_AMPERSAND:
+  case TOKEN_AND:
+  case TOKEN_PIPE:
+  case TOKEN_OR:
+  case TOKEN_CARET:
+  case TOKEN_PLUS:
+  case TOKEN_PLUS_PLUS:
+  case TOKEN_MINUS:
+  case TOKEN_MINUS_MINUS:
+  case TOKEN_STAR:
+  case TOKEN_SLASH:
+  case TOKEN_PERCENT:
+    current_expression = parse_binary(last_expression, token_pointer);
+    break;
+
+  default:
+    // TODO: Better error handling
+    printf("Error when parsing precedence: Unknown token %s", token_type_to_string(type));
+    return current_expression;
+  }
+  return current_expression;
+}
+
+// Used to be "parse_precedence" but I renamed it for clarity.
+// Parses equal or higher precedense values (to ensure correct evaluation order)
+// Example of what it will parse: add_function(2, 3) * -12 + -6
+node *parse_expression(precedence precedence, token **token_pointer) {
   token *current_token = peek_token(token_pointer);
 
-  // Unary operators
-  switch (current_token->type) {
-  default:
-    break;
-  case TOKEN_MINUS:
-  case TOKEN_PLUS:
-  case TOKEN_NOT:
+  if (should_parse_unary(current_token->type)) {
     return parse_unary(token_pointer);
-    break;
   }
 
-  node *current_node = NULL;
-  node *last_expression = NULL;
   node *current_expression = NULL;
+  node *last_expression = NULL;
 
-  // Keep parsing equal or higher precedence values
-  // Example: -12 - -6 * (2 + 3);
   while (precedence <= get_precedence(current_token->type)) {
-    switch (current_token->type) {
-    case TOKEN_COMMA:
-    case TOKEN_SEMI_COLON:
-      // Error here, semi colon not supposed to be in the middle of expression.
-      // It doesn't make sense, but in "get_precedence", semi colon means "just
-      // return, don't loop a last time"
-      return current_node;
-
-    // Imagine a scenario like this: (get_object()->number++) + 5
-    case TOKEN_LEFT_PARENTHESES:
-      current_expression = parse_grouping(token_pointer);
-      break;
-
-    case TOKEN_NUMBER:
-      current_expression = parse_number(token_pointer);
-      break;
-
-    case TOKEN_DOT:
-      // Get rid of '.'
-      advance_token(token_pointer);
-      current_expression = create_node(NODE_STRUCT_MEMBER_GET);
-      // Last expression is variable (variable. <-we're here)
-      current_expression->struct_member_get.from = last_expression;
-      current_expression->struct_member_get.name =
-          pop_token(token_pointer)->value;
-      // Now, we've parsed to here: (variable.member <-we're here)
-      if (peek_token(token_pointer)->type == TOKEN_LEFT_PARENTHESES) {
-        current_expression =
-            parse_function_call(current_expression, token_pointer);
-      }
-      break;
-
-    case TOKEN_NAME:
-      current_expression = create_node(NODE_VARIABLE);
-      current_expression->variable.name = pop_token(token_pointer)->value;
-      // Function call by itself
-      if (peek_token(token_pointer)->type == TOKEN_LEFT_PARENTHESES) {
-        current_expression =
-            parse_function_call(current_expression, token_pointer);
-      }
-      // Honestly, just ignore if it's a type or not. Symantic analysis will do
-      // that for us "name" and nothing else == variable "name.name" == struct
-      // member get, should be recursive for "name.name.name.name..."
-      // "name->name" == struct dereference and member get
-      // "name(name name, name name, ...)" == function call
-      //
-      // Use "variable" and "structure" nodes
-      // We also gotta check a dereference (*) before this token
-      // Use dereference and reference for the operators
-      break;
-
-    case TOKEN_EQUALS_EQUALS:
-    case TOKEN_NOT_EQUALS:
-    case TOKEN_LESS_THAN:
-    case TOKEN_LESS_THAN_EQUALS:
-    case TOKEN_GREATER_THAN:
-    case TOKEN_GREATER_THAN_EQUALS:
-    case TOKEN_AMPERSAND:
-    case TOKEN_AND:
-    case TOKEN_PIPE:
-    case TOKEN_OR:
-    case TOKEN_CARET:
-    case TOKEN_PLUS:
-    case TOKEN_PLUS_PLUS:
-    case TOKEN_MINUS:
-    case TOKEN_MINUS_MINUS:
-    case TOKEN_STAR:
-    case TOKEN_SLASH:
-    case TOKEN_PERCENT:
-      current_expression = parse_binary(last_expression, token_pointer);
-      break;
-
-    default:
-      // TODO: Better error handling
-      printf("Error when parsing precedence: Unknown token %s",
-             token_type_to_string(current_token->type));
-      return current_node;
-    }
-    current_token = peek_token(token_pointer);
+    current_expression = switch_expression(current_expression, last_expression, current_token->type, token_pointer);
     last_expression = current_expression;
-    current_node = current_expression;
+    current_token = peek_token(token_pointer);
   }
-
-  return current_node;
+  
+  return current_expression;
 }
 
-node *parse_expression(token **token_pointer) {
-  node *current_node = parse_precedence(PRECEDENCE_ASSIGNMENT, token_pointer);
-  expect_token(TOKEN_SEMI_COLON, token_pointer);
-  return current_node;
-}
-
-// The "current_node" parameter is passed in with "type", "name", and "pointer" amount already set
-node *parse_function(node *current_node, token **token_pointer) {
-  current_node->function.parameters = vector_create();
+// The "function_expression" parameter is passed in with "type", "name", and "pointer" amount already set
+node *parse_function(node *function_expression, token **token_pointer) {
+  function_expression->function.parameters = vector_create();
   expect_token(TOKEN_LEFT_PARENTHESES, token_pointer);
 
   // Loop till end or TOKEN_RIGHT_PARENTHESES
@@ -395,14 +396,15 @@ node *parse_function(node *current_node, token **token_pointer) {
         .type = type,
         .name = expect_token(TOKEN_NAME, token_pointer)->value,
     };
-    vector_add(&current_node->function.parameters, current_parameter);
+    vector_add(&function_expression->function.parameters, current_parameter);
+    assert(((parameter *)vector_last(&function_expression->function.parameters))->name == current_parameter.name);
     // If we parse expression and token on right is anything but comma or parentheses, syntax error
     if (peek_token(token_pointer)->type != TOKEN_RIGHT_PARENTHESES) {
       expect_token(TOKEN_COMMA, token_pointer);
     }
   }
   expect_token(TOKEN_RIGHT_PARENTHESES, token_pointer);
-  return current_node;
+  return function_expression;
 }
 
 // parse_variable_assignment and parse_variable_declaration seem to be very similar
@@ -410,27 +412,29 @@ node *parse_function(node *current_node, token **token_pointer) {
 // 
 // Parse something like "a = 12 + (9 * 20);"
 node *parse_variable_assignment(token **token_pointer) {
-  node *current_node = create_node(NODE_VARIABLE_DECLARATION);
+  node *variable_expression = create_node(NODE_VARIABLE_DECLARATION);
   // TODO: Figure out whether to make new node or roll with 'no type'
   // current_node->variable.type = NULL;
-  current_node->variable_declaration.name = expect_token(TOKEN_NAME, token_pointer)->value;
+  variable_expression->variable_declaration.name = expect_token(TOKEN_NAME, token_pointer)->value;
   expect_token(TOKEN_EQUALS, token_pointer);
-  current_node->variable_declaration.value = parse_expression(token_pointer);
-  return current_node;
-}
-
-node *parse_variable_declaration(node *current_node, token **token_pointer) {
-  expect_token(TOKEN_EQUALS, token_pointer);
-  current_node->type = NODE_VARIABLE_DECLARATION;
-  current_node->variable_declaration.value = parse_expression(token_pointer);
-  return current_node;
-}
-
-node *parse_variable_prototype(node *current_node, token **token_pointer) {
+  variable_expression->variable_declaration.value = parse_expression(PRECEDENCE_ASSIGNMENT, token_pointer);
   expect_token(TOKEN_SEMI_COLON, token_pointer);
-  current_node->type = NODE_VARIABLE_DECLARATION;
-  current_node->variable_declaration.value = NULL;
-  return current_node;
+  return variable_expression;
+}
+
+node *parse_variable_declaration(node *variable_expression, token **token_pointer) {
+  expect_token(TOKEN_EQUALS, token_pointer);
+  variable_expression->type = NODE_VARIABLE_DECLARATION;
+  variable_expression->variable_declaration.value = parse_expression(PRECEDENCE_ASSIGNMENT, token_pointer);
+  expect_token(TOKEN_SEMI_COLON, token_pointer);
+  return variable_expression;
+}
+
+node *parse_variable_prototype(node *variable_expression, token **token_pointer) {
+  expect_token(TOKEN_SEMI_COLON, token_pointer);
+  variable_expression->type = NODE_VARIABLE_DECLARATION;
+  variable_expression->variable_declaration.value = NULL;
+  return variable_expression;
 }
 
 // Should be a stack struct such as "parameter" so we only give the info that is required
@@ -447,12 +451,12 @@ node *parse_variable_attributes(token **token_pointer) {
   assert(vector_size((vector*)&type.name) > 0);
   assert(vector_size((vector*)&name) > 0);
 
-  node *current_node = create_node(NODE_NONE);
+  node *variable_expression = create_node(NODE_NONE);
   // Set the type_info and name for variables AND functions AND parameters
-  current_node->variable_declaration.type = type;
-  current_node->variable_declaration.name = name;
+  variable_expression->variable_declaration.type = type;
+  variable_expression->variable_declaration.name = name;
 
-  return current_node;
+  return variable_expression;
 }
 
 // Parse a variable or function declaration.
@@ -551,7 +555,8 @@ void print_block(node *ast, int indent_level) {
     break;
   case NODE_BLOCK:
     for (int i = 0; i < (int)vector_size((vector *)&ast->block.nodes); i++) {
-      print_block(vector_get(&ast->block.nodes, i), indent_level + 1);
+      //print_block(vector_get(&ast->block.nodes, i), indent_level + 1);
+      print_block(ast->block.nodes[i], indent_level + 1);
     }
     break;
   case NODE_VARIABLE_DECLARATION:
@@ -604,6 +609,15 @@ node *parser(token *tokens) {
 
   // Parse scope (with a scope number of one, we declared int for 0'th layer)
   node *ast = parse_block(&context, 1, token_pointer);
+
+  assert(ast->type == NODE_BLOCK);
+  assert(ast->block.nodes != NULL);
+  assert(ast->block.nodes[0]->type == NODE_VARIABLE_DECLARATION);
+  assert(ast->block.nodes[0]->variable_declaration.type.pointer_amount == 0);
+  assert(ast->block.nodes[0]->variable_declaration.value->equation.left->type == NODE_NUMBER_LITERAL);
+  assert(ast->block.nodes[0]->variable_declaration.value->equation.left->number_literal.value == 10);
+  assert(ast->block.nodes[0]->variable_declaration.value->equation.operator == OPERATOR_ADD);
+  assert(false);
 
   print_block(ast, 0);
 
