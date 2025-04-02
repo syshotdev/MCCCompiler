@@ -26,7 +26,7 @@
   X(NODE_FOR)                                                                  \
   X(NODE_WHILE)                                                                \
                                                                                \
-  X(NODE_CALL_FUNCTION)                                                        \
+  X(NODE_FUNCTION_CALL)                                                        \
   X(NODE_RETURN)                                                               \
                                                                                \
   X(NODE_VARIABLE_DECLARATION)                                                 \

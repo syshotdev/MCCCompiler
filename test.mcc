@@ -1,11 +1,11 @@
 /*
 We can successfully parse expressions like
 `int i = 10 + 29 - (11 * 11);`
+int i = 10 + 2 * (10 * 10);
 Now, let's try a modified approach.
 This code below requires: parsing expressions, parsing expressions with variables, parsing
 expressions with functions (and using the function_call node), uninitialized variables.
+*/
 int i = 2 * 2;
 int j = i + function(i);
 int k;
-*/
-int i = 10 + 2 * (10 * 10);

@@ -256,7 +256,7 @@ node *parse_unary(token **token_pointer) {
 node *parse_function_call(node *function_expression, token **token_pointer) {
   assert(function_expression != NULL);
 
-  node *current_node = create_node(NODE_CALL_FUNCTION);
+  node *current_node = create_node(NODE_FUNCTION_CALL);
   current_node->function_call.function_expression = function_expression;
   current_node->function_call.inputs = vector_create();
 
@@ -266,7 +266,8 @@ node *parse_function_call(node *function_expression, token **token_pointer) {
   while (!is_at_end(token_pointer) && peek_token(token_pointer)->type != TOKEN_RIGHT_PARENTHESES) {
     node *parameter_expression = parse_expression(PRECEDENCE_ASSIGNMENT, token_pointer);
     vector_add(&current_node->function_call.inputs, parameter_expression);
-    assert(vector_last(&current_node->function_call.inputs) == parameter_expression);
+    // vector_last here doesn't gie the last element, for some reason!!!
+    assert(*(node **)vector_last(&current_node->function_call.inputs) == parameter_expression);
     // If we parse expression and token on right is anything but comma or
     // parentheses, syntax error
     if (peek_token(token_pointer)->type != TOKEN_RIGHT_PARENTHESES) {
@@ -541,48 +542,52 @@ node *parse_block(scope_context *context, int depth, token **token_pointer) {
   return ast;
 }
 
-void print_block(node *ast, int indent_level) {
-  // Generate indents
+void print_indents(int indent_level) {
   for (int i = 0; i < indent_level; i++) {
     putchar('\t');
   }
+}
 
-  printf("%s\n", node_type_to_string(ast->type));
+void print_block(node *ast, int indent_level) {
+  if (ast == NULL) {
+    return;
+  }
 
-  node *next_ast = NULL;
+  print_indents(indent_level); printf("%s\n", node_type_to_string(ast->type));
+
   switch (ast->type) {
   default:
     break;
   case NODE_BLOCK:
     for (int i = 0; i < (int)vector_size((vector *)&ast->block.nodes); i++) {
-      //print_block(vector_get(&ast->block.nodes, i), indent_level + 1);
       print_block(ast->block.nodes[i], indent_level + 1);
     }
     break;
-  case NODE_VARIABLE_DECLARATION:
-    for (int i = 0; i < indent_level; i++) {
-      putchar('\t');
-    }
-    vector_print_string(&ast->variable_declaration.name);
-    printf("\n");
-    next_ast = ast->variable_declaration.value;
-    if (next_ast != NULL) {
-      print_block(next_ast, indent_level + 1);
-    }
+  case NODE_NUMBER_LITERAL:
+    print_indents(indent_level); printf(": %d\n", ast->number_literal.value);
+    break;
+  case NODE_VARIABLE:
+    print_indents(indent_level); printf(": "); vector_print_string(&ast->variable.name); printf("\n");
     break;
   case NODE_EQUATION:
-    for (int i = 0; i < indent_level; i++) {
-      putchar('\t');
+    print_indents(indent_level); printf(": %s\n", operator_type_to_string(ast->equation.operator));
+
+    print_block(ast->equation.left, indent_level + 1);
+    print_block(ast->equation.right, indent_level + 1);
+    break;
+  case NODE_FUNCTION_CALL: 
+    print_indents(indent_level); printf("Body:\n"); 
+    print_block(ast->function_call.function_expression, indent_level + 1);
+    
+    print_indents(indent_level); printf("Inputs:\n");
+    for (int i = 0; i < (int)vector_size((vector *)&ast->function_call.inputs); i++) {
+      print_block(ast->function_call.inputs[i], indent_level + 1);
     }
-    printf(": %s\n", operator_type_to_string(ast->equation.operator));
-    next_ast = ast->equation.left;
-    if (next_ast != NULL) {
-      print_block(next_ast, indent_level + 1);
-    }
-    next_ast = ast->equation.right;
-    if (next_ast != NULL) {
-      print_block(next_ast, indent_level + 1);
-    }
+    break;
+  case NODE_VARIABLE_DECLARATION:
+    print_indents(indent_level); printf(": "); vector_print_string(&ast->variable_declaration.name); printf("\n");
+
+    print_block(ast->variable_declaration.value, indent_level + 1);
     break;
   }
 }
@@ -609,15 +614,6 @@ node *parser(token *tokens) {
 
   // Parse scope (with a scope number of one, we declared int for 0'th layer)
   node *ast = parse_block(&context, 1, token_pointer);
-
-  assert(ast->type == NODE_BLOCK);
-  assert(ast->block.nodes != NULL);
-  assert(ast->block.nodes[0]->type == NODE_VARIABLE_DECLARATION);
-  assert(ast->block.nodes[0]->variable_declaration.type.pointer_amount == 0);
-  assert(ast->block.nodes[0]->variable_declaration.value->equation.left->type == NODE_NUMBER_LITERAL);
-  assert(ast->block.nodes[0]->variable_declaration.value->equation.left->number_literal.value == 10);
-  assert(ast->block.nodes[0]->variable_declaration.value->equation.operator == OPERATOR_ADD);
-  assert(false);
 
   print_block(ast, 0);
 
