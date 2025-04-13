@@ -1,3 +1,41 @@
+For future me:
+Think about how expressions are parsed and what that means for variable parsing
+1 + 3 * (2 + 2) + i.member
+1 + expression is created first, with + at top
+Then second plus encapsulates 1 + expression adding it to i.member
+
+The way we will do it is like this:
+We have variable.member.number, we parse variable first as a variable node.
+Then we see the variable, and create a member_get node that has "from" as the variable.
+We then put the name of the member from the "variable". 
+This is returned, and when the "parse_expression" statement sees a period, it passes in last expression
+as the "from" again.
+.member is parsed, and from = "variable", and name = "member"
+Leaving ".number" to be parsed again.
+Ok, I worked it out, now tomorrow I implement it and CLEAN UP THIS CODE!!!
+
+
+
+
+
+
+SCRATCH THIS!!!
+For member gets, I'm wondering how I should structure them.
+Most logically, I have the variable (variable.member.member2), I put the variable in the
+"from" expression of a member_get, and parse the future members into the "member" expression of the
+member_get.
+
+
+
+
+
+
+
+
+
+
+
+
 Parse loops
 Rename parse_scope to parse_block, rename print_ast to print_block
 Add switch statement to print_block that prints out each type

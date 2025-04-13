@@ -67,13 +67,16 @@
   X(TOKEN_PERCENT)                                                             \
                                                                                \
   X(TOKEN_DOT)                                                                 \
+  X(TOKEN_ARROW)                                                               \
   X(TOKEN_COMMA)                                                               \
   X(TOKEN_SEMI_COLON)                                                          \
   X(TOKEN_COLON)                                                               \
   X(TOKEN_LEFT_PARENTHESES)                                                    \
   X(TOKEN_RIGHT_PARENTHESES)                                                   \
   X(TOKEN_LEFT_BRACKET)                                                        \
-  X(TOKEN_RIGHT_BRACKET)
+  X(TOKEN_RIGHT_BRACKET)                                                       \
+  X(TOKEN_LEFT_BRACE)                                                          \
+  X(TOKEN_RIGHT_BRACE)                                                         \
 
 typedef enum { ITERATE_TOKENS_AND(GENERATE_ENUM) } token_type;
 

@@ -51,8 +51,7 @@ void advance_till(char terminating_string[], char **char_pointer) {
   while (true) {
     char current_char = pop_char(char_pointer);
 
-    if ((int)vector_size((vector *)&current_chars) ==
-        terminating_string_length) {
+    if ((int)vector_size((vector *)&current_chars) == terminating_string_length) {
       vector_remove(&current_chars, 0);
     }
     vector_add(&current_chars, current_char);
@@ -65,8 +64,7 @@ void advance_till(char terminating_string[], char **char_pointer) {
 }
 
 // Make a string till condition is false, at end finish string and do misc
-void collect_characters(token current_token, bool (*condition)(char),
-                        char **char_pointer) {
+void collect_characters(token current_token, bool (*condition)(char), char **char_pointer) {
   char current_char = pop_char(char_pointer);
   while (condition(current_char) && current_char != EOF) {
     vector_add(&current_token.value, current_char);
@@ -89,8 +87,7 @@ token create_single(token_type type, char **char_pointer) {
 // We are at first char. If next char is expected, create twice token, otherwise
 // create once. Ex: We are at '-', if we advance char and another '-', create
 // twice token.
-token create_double(char expected, token_type once, token_type twice,
-                     char **char_pointer) {
+token create_double(char expected, token_type once, token_type twice, char **char_pointer) {
   // Skip current "once" char, and check if next char is "twice" chars
   advance_char(char_pointer);
 
@@ -260,24 +257,19 @@ token *lexer(char_vector chars) {
 
     // Equality
     case '=':
-      current_token =
-          create_double('=', TOKEN_EQUALS, TOKEN_EQUALS_EQUALS, char_pointer);
+      current_token = create_double('=', TOKEN_EQUALS, TOKEN_EQUALS_EQUALS, char_pointer);
       break;
     case '!':
-      current_token =
-          create_double('=', TOKEN_NOT, TOKEN_NOT_EQUALS, char_pointer);
+      current_token = create_double('=', TOKEN_NOT, TOKEN_NOT_EQUALS, char_pointer);
       break;
     case '<':
-      current_token = create_double('=', TOKEN_LESS_THAN,
-                                    TOKEN_LESS_THAN_EQUALS, char_pointer);
+      current_token = create_double('=', TOKEN_LESS_THAN, TOKEN_LESS_THAN_EQUALS, char_pointer);
       break;
     case '>':
-      current_token = create_double('=', TOKEN_GREATER_THAN,
-                                    TOKEN_GREATER_THAN_EQUALS, char_pointer);
+      current_token = create_double('=', TOKEN_GREATER_THAN, TOKEN_GREATER_THAN_EQUALS, char_pointer);
       break;
     case '&':
-      current_token =
-          create_double('&', TOKEN_AMPERSAND, TOKEN_AND, char_pointer);
+      current_token = create_double('&', TOKEN_AMPERSAND, TOKEN_AND, char_pointer);
       break;
     case '|':
       current_token = create_double('|', TOKEN_PIPE, TOKEN_OR, char_pointer);
@@ -288,13 +280,17 @@ token *lexer(char_vector chars) {
 
     // Math operations
     case '+':
-      current_token =
-          create_double('+', TOKEN_PLUS, TOKEN_PLUS_PLUS, char_pointer);
+      current_token = create_double('+', TOKEN_PLUS, TOKEN_PLUS_PLUS, char_pointer);
       break;
     case '-':
-      // Wish I could do ->
-      current_token =
-          create_double('-', TOKEN_MINUS, TOKEN_MINUS_MINUS, char_pointer);
+      switch (peek_char(char_pointer)) {
+      case '>':
+        current_token = create_token(TOKEN_ARROW);
+        break;
+      default:
+        current_token = create_double('-', TOKEN_MINUS, TOKEN_MINUS_MINUS, char_pointer);
+        break;
+      }
       break;
     case '*':
       current_token = create_single(TOKEN_STAR, char_pointer);
@@ -335,10 +331,10 @@ token *lexer(char_vector chars) {
       current_token = create_single(TOKEN_RIGHT_BRACKET, char_pointer);
       break;
     case '{':
-      current_token = create_single(TOKEN_LEFT_BRACKET, char_pointer);
+      current_token = create_single(TOKEN_LEFT_BRACE, char_pointer);
       break;
     case '}':
-      current_token = create_single(TOKEN_RIGHT_BRACKET, char_pointer);
+      current_token = create_single(TOKEN_RIGHT_BRACE, char_pointer);
       break;
     case '.':
       current_token = create_single(TOKEN_DOT, char_pointer);

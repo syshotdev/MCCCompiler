@@ -29,6 +29,7 @@
   X(NODE_FUNCTION_CALL)                                                        \
   X(NODE_RETURN)                                                               \
                                                                                \
+  X(NODE_VARIABLE_ASSIGNMENT)                                                  \
   X(NODE_VARIABLE_DECLARATION)                                                 \
   X(NODE_FUNCTION_DECLARATION)                                                 \
   X(NODE_PARAMETER)
@@ -45,8 +46,16 @@
   X(OPERATOR_AND)                                                              \
   X(OPERATOR_OR)                                                               \
   X(OPERATOR_XOR)                                                              \
+  X(OPERATOR_EQUALS_EQUALS)                                                    \
+  X(OPERATOR_NOT_EQUALS)                                                       \
+  X(OPERATOR_LESS_THAN)                                                        \
+  X(OPERATOR_LESS_THAN_EQUALS)                                                 \
+  X(OPERATOR_GREATER_THAN)                                                     \
+  X(OPERATOR_GREATER_THAN_EQUALS)                                              \
+  X(OPERATOR_AND_AND)                                                          \
+  X(OPERATOR_OR_OR)                                                            \
   X(OPERATOR_DEREFERENCE)                                                      \
-  X(OPERATOR_REFERENCE)                                                        \
+  X(OPERATOR_REFERENCE)
 
 typedef enum { ITERATE_NODES_AND(GENERATE_ENUM) } node_type;
 typedef enum { ITERATE_OPERATORS_AND(GENERATE_ENUM) } operator_type;
@@ -116,6 +125,10 @@ typedef struct node {
     } variable_declaration;
     struct {
       char_vector name;
+      struct node *value; // Equation after the equals (=) sign (Required)
+    } variable_assignment;
+    struct {
+      char_vector name;
       struct node *from;
     } struct_member_get;
     struct {
@@ -128,9 +141,19 @@ typedef struct node {
       struct node *fail; // Else path (Optional)
     } if_statement;
     struct {
+      struct node *body;
+      struct node *condition;
+    } do_while_loop;
+    struct {
       struct node *condition;
       struct node *body;
-    } loop;
+    } while_loop;
+    struct {
+      struct node *index_declaration;
+      struct node *condition;
+      struct node *index_assignment;
+      struct node *body;
+    } for_loop;
     struct {
       type_info type;
       char_vector name;
