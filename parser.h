@@ -23,8 +23,9 @@
                                                                                \
   X(NODE_IF)                                                                   \
   X(NODE_ELSEIF)                                                               \
-  X(NODE_FOR)                                                                  \
+  X(NODE_DO_WHILE)                                                             \
   X(NODE_WHILE)                                                                \
+  X(NODE_FOR)                                                                  \
                                                                                \
   X(NODE_FUNCTION_CALL)                                                        \
   X(NODE_RETURN)                                                               \

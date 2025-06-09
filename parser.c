@@ -155,6 +155,10 @@ precedence get_precedence(token_type type) {
   default:
     precedence = PRECEDENCE_NONE;
     break;
+  // If there's a while(condition), the right parentheses should not be used in the loop
+  case TOKEN_RIGHT_PARENTHESES:
+    precedence = PRECEDENCE_NONE;
+    break;
   case TOKEN_OR:
     precedence = PRECEDENCE_OR;
     break;
@@ -303,7 +307,6 @@ node *parse_function_call(node *from_expression, token **token_pointer) {
   current_node->function_call.function_expression = from_expression;
   current_node->function_call.inputs = vector_create();
 
-  expect_token(TOKEN_LEFT_PARENTHESES, token_pointer);
   // Loop till end or TOKEN_RIGHT_PARENTHESES
   // Example: func(1 + 5 + a, "string");
   while (!is_at_end(token_pointer) && peek_token(token_pointer)->type != TOKEN_RIGHT_PARENTHESES) {
@@ -315,7 +318,6 @@ node *parse_function_call(node *from_expression, token **token_pointer) {
       expect_token(TOKEN_COMMA, token_pointer);
     }
   }
-  expect_token(TOKEN_RIGHT_PARENTHESES, token_pointer);
 
   return current_node;
 }
@@ -335,12 +337,11 @@ node *parse_struct_member_get(node *from_expression, token **token_pointer) {
 }
 
 node *parse_struct_member_dereference_get(node *from_expression, token **token_pointer) {
-  expect_token(TOKEN_ARROW, token_pointer);
-  node *current_node = create_node(NODE_EQUATION);
-  current_node->equation.operator = OPERATOR_DEREFERENCE;
-  current_node->equation.left = create_struct_member_get(from_expression, token_pointer);
-  current_node->equation.right = NULL;
-  return current_node;
+  node *current_expression = create_node(NODE_EQUATION);
+  current_expression->equation.operator = OPERATOR_DEREFERENCE;
+  current_expression->equation.left = create_struct_member_get(from_expression, token_pointer);
+  current_expression->equation.right = NULL;
+  return current_expression;
 }
 
 node *parse_variable_assignment(token **token_pointer) {
@@ -382,23 +383,18 @@ node *parse_variable_expression(token **token_pointer) {
       // If it isn't any operator, get out of the loop
       get_out_of_loop = true;
       break;
-    case TOKEN_EQUALS:
-      // Yeah if there's a struct member get before this we're cooked
-      current_expression = parse_variable_assignment(token_pointer);
-      break;
     case TOKEN_ARROW:
+      expect_token(TOKEN_ARROW, token_pointer);
       current_expression = parse_struct_member_dereference_get(current_expression, token_pointer);
       break;
     case TOKEN_DOT:
+      expect_token(TOKEN_DOT, token_pointer);
       current_expression = parse_struct_member_get(current_expression, token_pointer);
       break;
     case TOKEN_LEFT_PARENTHESES:
+      expect_token(TOKEN_LEFT_PARENTHESES, token_pointer);
       current_expression = parse_function_call(current_expression, token_pointer);
-      break;
-
-    // Honestly I have no idea what to do here.
-    case TOKEN_PLUS_PLUS:
-    case TOKEN_MINUS_MINUS:
+      expect_token(TOKEN_RIGHT_PARENTHESES, token_pointer);
       break;
     }
   }
@@ -413,11 +409,9 @@ node *parse_unary(token **token_pointer) {
     // TODO: Error
     printf("Error when parsing unary: Unknown operator '%s'\n", token_type_to_string(operator_token->type));
     return parse_expression(PRECEDENCE_UNARY, token_pointer);
-    break;
   case TOKEN_PLUS:
     // +NUMBER does nothing
     return parse_expression(PRECEDENCE_UNARY, token_pointer);
-    break;
   case TOKEN_MINUS:
     operator = OPERATOR_NEGATE;
     break;
@@ -429,21 +423,22 @@ node *parse_unary(token **token_pointer) {
     break;
   }
 
-  node *current_node = create_node(NODE_EQUATION);
-  current_node->equation.operator = operator;
-  current_node->equation.left = parse_expression(PRECEDENCE_UNARY, token_pointer);
-  current_node->equation.right = NULL;
-  assert(current_node->equation.left != NULL);
-  assert(current_node->equation.right == NULL);
-  return current_node;
+  node *current_expression = create_node(NODE_EQUATION);
+  current_expression->equation.operator = operator;
+  current_expression->equation.left = parse_expression(PRECEDENCE_UNARY, token_pointer);
+  current_expression->equation.right = NULL;
+  assert(current_expression->equation.left != NULL);
+  assert(current_expression->equation.right == NULL);
+  return current_expression;
 }
 
 node *switch_expression(node *last_expression, node *current_expression, token_type type, token **token_pointer) {
   switch (type) {
   case TOKEN_COMMA:
   case TOKEN_SEMI_COLON:
+  case TOKEN_RIGHT_PARENTHESES:
     // If this path is taken, it means a function overstepped it's boundaries and met
-    // a semicolon or a comma. For now, an expression is numbers, variables, and function
+    // a semicolon, right parentheses, or a comma. For now, an expression is numbers, variables, and function
     // calls, and commas do not mean you can put several expressions in the same place.
     assert("Error in switch_expression: This path isn't supposed to be reached." == NULL);
     break;
@@ -565,42 +560,45 @@ node *parse_type(scope_context *context, int depth, token **token_pointer) {
   return current_node;
 }
 
-node *parse_loop(scope_context *context, int depth, token **token_pointer) {
-  node *current_node = NULL;
-  token_type type = peek_token(token_pointer)->type;
-  switch (type) {
-    case TOKEN_WHILE:
-      current_node = create_node(NODE_WHILE);
-      expect_token(TOKEN_WHILE, token_pointer);
-      expect_token(TOKEN_LEFT_PARENTHESES, token_pointer);
-      current_node->while_loop.condition = parse_expression(PRECEDENCE_ASSIGNMENT, token_pointer);
-      expect_token(TOKEN_RIGHT_PARENTHESES, token_pointer);
-      expect_token(TOKEN_LEFT_BRACE, token_pointer);
-      current_node->while_loop.body = parse_block(context, depth + 1, token_pointer);
-      expect_token(TOKEN_RIGHT_BRACE, token_pointer);
-      break;
-    case TOKEN_FOR:
-      current_node = create_node(NODE_WHILE);
-      expect_token(TOKEN_FOR, token_pointer);
-      expect_token(TOKEN_LEFT_PARENTHESES, token_pointer);
-      // int i = 0;
-      current_node->for_loop.index_declaration = parse_variable_declaration(parse_variable_attributes(token_pointer), token_pointer);
-      // i < 5;
-      current_node->for_loop.condition = parse_expression(PRECEDENCE_ASSIGNMENT, token_pointer);
-      // i++;
-      current_node->for_loop.index_assignment = parse_expression(PRECEDENCE_ASSIGNMENT, token_pointer);
-      expect_token(TOKEN_RIGHT_PARENTHESES, token_pointer);
-      expect_token(TOKEN_LEFT_BRACE, token_pointer);
-      current_node->for_loop.body = parse_block(context, depth + 1, token_pointer);
-      expect_token(TOKEN_RIGHT_BRACE, token_pointer);
-      break;
-  default:
-    // TODO: Error
-    printf("Error when parsing loop: Unknown token '%s'\n", token_type_to_string(type));
-    return current_node;
-  }
-  // For next time: Figure out whether or not to make loop
-
+node *parse_do_while(scope_context *context, int depth, token **token_pointer) {
+  node *current_node = create_node(NODE_DO_WHILE);
+  expect_token(TOKEN_DO, token_pointer);
+  expect_token(TOKEN_LEFT_BRACE, token_pointer);
+  current_node->while_loop.body = parse_block(context, depth + 1, token_pointer);
+  expect_token(TOKEN_RIGHT_BRACE, token_pointer);
+  expect_token(TOKEN_WHILE, token_pointer);
+  expect_token(TOKEN_LEFT_PARENTHESES, token_pointer);
+  current_node->while_loop.condition = parse_expression(PRECEDENCE_ASSIGNMENT, token_pointer);
+  expect_token(TOKEN_RIGHT_PARENTHESES, token_pointer);
+  return current_node;
+}
+node *parse_while(scope_context *context, int depth, token **token_pointer) {
+  node *current_node = create_node(NODE_WHILE);
+  expect_token(TOKEN_WHILE, token_pointer);
+  expect_token(TOKEN_LEFT_PARENTHESES, token_pointer);
+  current_node->while_loop.condition = parse_expression(PRECEDENCE_ASSIGNMENT, token_pointer);
+  expect_token(TOKEN_RIGHT_PARENTHESES, token_pointer);
+  expect_token(TOKEN_LEFT_BRACE, token_pointer);
+  current_node->while_loop.body = parse_block(context, depth + 1, token_pointer);
+  expect_token(TOKEN_RIGHT_BRACE, token_pointer);
+  return current_node;
+}
+node *parse_for(scope_context *context, int depth, token **token_pointer) {
+  node *current_node = create_node(NODE_FOR);
+  expect_token(TOKEN_FOR, token_pointer);
+  expect_token(TOKEN_LEFT_PARENTHESES, token_pointer);
+  // int i = 0;
+  current_node->for_loop.index_declaration = parse_variable_declaration(parse_variable_attributes(token_pointer), token_pointer);
+  expect_token(TOKEN_SEMI_COLON, token_pointer);
+  // i < 5;
+  current_node->for_loop.condition = parse_expression(PRECEDENCE_ASSIGNMENT, token_pointer);
+  expect_token(TOKEN_SEMI_COLON, token_pointer);
+  // i++;
+  current_node->for_loop.index_assignment = parse_expression(PRECEDENCE_ASSIGNMENT, token_pointer);
+  expect_token(TOKEN_RIGHT_PARENTHESES, token_pointer);
+  expect_token(TOKEN_LEFT_BRACE, token_pointer);
+  current_node->for_loop.body = parse_block(context, depth + 1, token_pointer);
+  expect_token(TOKEN_RIGHT_BRACE, token_pointer);
   return current_node;
 }
 
@@ -621,10 +619,6 @@ node *parse_block(scope_context *context, int depth, token **token_pointer) {
   // Keep parsing individual statements until end of scope
   while (current_token->type != TOKEN_END && current_token->type != TOKEN_RIGHT_BRACE) {
     switch (current_token->type) {
-    default:
-      printf("Error when parsing block: Unknown token '%s'\n", token_type_to_string(current_token->type));
-      current_node = create_node(NODE_END);
-      break;
     case TOKEN_END:
       // Add ending notifier
       expect_token(TOKEN_END, token_pointer);
@@ -632,27 +626,34 @@ node *parse_block(scope_context *context, int depth, token **token_pointer) {
       break;
 
     case TOKEN_TYPEDEF:
+      expect_token(TOKEN_TYPEDEF, token_pointer);
       add_type_to_context(context, current_token->value, depth);
       break;
 
-    case TOKEN_WHILE:
-      current_node = parse_loop(context, depth, token_pointer);
+    case TOKEN_DO:
+      current_node = parse_do_while(context, depth, token_pointer);
       break;
-
-    case TOKEN_NAME:
-      // Example: int j = k + 5; versus j = 2;
-      if (is_type(context, current_token->value)) {
-        current_node = parse_type(context, depth, token_pointer);
-      } else {
-        current_node = parse_variable_assignment(token_pointer);
-      }
+    case TOKEN_WHILE:
+      current_node = parse_while(context, depth, token_pointer);
+      break;
+    case TOKEN_FOR:
+      current_node = parse_for(context, depth, token_pointer);
       break;
 
     case TOKEN_LEFT_BRACE:
       expect_token(TOKEN_LEFT_BRACE, token_pointer);
       current_node = parse_block(context, depth + 1, token_pointer);
       break;
-
+    default:
+      // If token is none of these, it is expression or variable declaration.
+      // First: check if is a type (int), if not it is an expression. If error, expression will catch it.
+      if (is_type(context, current_token->value)) {
+        current_node = parse_type(context, depth, token_pointer);
+      } else {
+        current_node = parse_expression(PRECEDENCE_ASSIGNMENT, token_pointer);
+        expect_token(TOKEN_SEMI_COLON, token_pointer);
+      }
+      break;
     }
     assert(current_node != NULL);
     vector_add(&ast->block.nodes, current_node);
