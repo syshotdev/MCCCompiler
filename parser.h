@@ -14,6 +14,7 @@
   X(NODE_NONE)                                                                 \
   X(NODE_BLOCK)                                                                \
                                                                                \
+  X(NODE_STRING)                                                               \
   X(NODE_NUMBER_LITERAL)                                                       \
   X(NODE_VARIABLE)                                                             \
   X(NODE_EQUATION)                                                             \
@@ -102,6 +103,9 @@ typedef struct hashmap **hashmap_vector;
 typedef struct node {
   node_type type;
   union {
+    struct {
+      char_vector value;
+    } string;
     struct {
       int value;
     } number_literal;

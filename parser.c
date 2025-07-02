@@ -83,11 +83,12 @@ void create_or_clear_context(scope_context *context, int depth) {
 //assert("HERE" == NULL);
 //TODO: Hashmap clear crashes for some reason. Figure this out later lol
   if (vector_has((vector *)&context->type_hashmaps, depth)) {
-    struct hashmap *type_hashmap = vector_get(&context->type_hashmaps, depth);
+    struct hashmap *type_hashmap = *(struct hashmap**)vector_get(&context->type_hashmaps, depth);
     hashmap_clear(type_hashmap, true);
   } else {
-    struct hashmap *type_hashmap = hashmap_new(sizeof(char_vector), 0, 0, 0, hash_string_vector, compare_string_vectors, NULL, NULL);
+    struct hashmap *type_hashmap = hashmap_new(sizeof(char_vector), 1, 0, 0, hash_string_vector, compare_string_vectors, NULL, NULL);
     vector_insert(&context->type_hashmaps, depth, type_hashmap);
+    assert(*(struct hashmap**)vector_get(&context->type_hashmaps, depth) == type_hashmap);
   }
 }
 
@@ -96,10 +97,12 @@ void add_type_to_context(scope_context *context, char_vector type_name, int dept
   // Object has the key (usually object.name), and itself as the value.
   // That is why it is only the 'key' instead of 'key:value'
   hashmap_set(context->type_hashmaps[depth], type_name);
+  assert(hashmap_get(context->type_hashmaps[depth], type_name) != NULL);
 }
 
 bool is_type(scope_context *context, char_vector name) {
   hashmap_vector type_hashmaps = context->type_hashmaps;
+  assert(type_hashmaps[0] == context->type_hashmaps[0]);
   for (vec_size_t i = 0; i < vector_size((vector *)&type_hashmaps); i++) {
     if (hashmap_get(type_hashmaps[i], name) != NULL) {
       return true;
@@ -205,6 +208,13 @@ precedence get_precedence(token_type type) {
     break;
   }
   return precedence;
+}
+
+node *parse_string(token **token_pointer) {
+  node *string_node = create_node(NODE_STRING);
+  // Get value from that token that sent us here
+  string_node->string.value = pop_token(token_pointer)->value;
+  return string_node;
 }
 
 node *parse_number(token **token_pointer) {
@@ -496,6 +506,10 @@ node *switch_expression(node *last_expression, node *current_expression, token_t
     current_expression = parse_variable_expression(token_pointer);
     break;
 
+  case TOKEN_STRING:
+    current_expression = parse_string(token_pointer);
+    break;
+
   case TOKEN_NUMBER:
     current_expression = parse_number(token_pointer);
     break;
@@ -748,6 +762,9 @@ void print_block(node *ast, int indent_level) {
     for (int i = 0; i < (int)vector_size((vector *)&ast->block.nodes); i++) {
       print_block(ast->block.nodes[i], indent_level + 1);
     }
+    break;
+  case NODE_STRING:
+    print_indents(indent_level); printf(": \""); vector_print_string(&ast->string.value); printf("\"\n");
     break;
   case NODE_NUMBER_LITERAL:
     print_indents(indent_level); printf(": %d\n", ast->number_literal.value);
