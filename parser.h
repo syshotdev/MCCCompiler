@@ -30,14 +30,14 @@
   X(NODE_FUNCTION_CALL)                                                        \
   X(NODE_RETURN)                                                               \
                                                                                \
-  X(NODE_VARIABLE_ASSIGNMENT)                                                  \
   X(NODE_VARIABLE_DECLARATION)                                                 \
   X(NODE_FUNCTION_DECLARATION)                                                 \
   X(NODE_PARAMETER)
 
-// 'negate' is not same as 'not', is for making number negative
+// 'negate' is not same as 'not', it is for making numbers negative
 
 #define ITERATE_OPERATORS_AND(X)                                               \
+  X(OPERATOR_ASSIGN)                                                           \
   X(OPERATOR_ADD)                                                              \
   X(OPERATOR_SUBTRACT)                                                         \
   X(OPERATOR_MULTIPLY)                                                         \

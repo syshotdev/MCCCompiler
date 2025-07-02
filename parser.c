@@ -80,6 +80,8 @@ uint64_t hash_string_vector(const void *data, uint64_t seed0, uint64_t seed1) {
 }
 
 void create_or_clear_context(scope_context *context, int depth) {
+//assert("HERE" == NULL);
+//TODO: Hashmap clear crashes for some reason. Figure this out later lol
   if (vector_has((vector *)&context->type_hashmaps, depth)) {
     struct hashmap *type_hashmap = vector_get(&context->type_hashmaps, depth);
     hashmap_clear(type_hashmap, true);
@@ -102,7 +104,7 @@ bool is_type(scope_context *context, char_vector name) {
     if (hashmap_get(type_hashmaps[i], name) != NULL) {
       return true;
     } else {
-      assert("Dang yeah word isn't in context/type hashmaps\n" == NULL);
+      printf("Info: '%.*s' isn't in context/type hashmaps\n", (int)vector_size((vector*)&name), name);
     }
   }
   return false;
@@ -112,7 +114,6 @@ bool should_parse_unary(token_type type) {
   switch (type) {
   default:
     return false;
-  case TOKEN_NAME:
   case TOKEN_MINUS:
   case TOKEN_PLUS:
   case TOKEN_NOT:
@@ -158,6 +159,13 @@ precedence get_precedence(token_type type) {
   // If there's a while(condition), the right parentheses should not be used in the loop
   case TOKEN_RIGHT_PARENTHESES:
     precedence = PRECEDENCE_NONE;
+    break;
+  case TOKEN_EQUALS:
+  case TOKEN_PLUS_EQUALS:
+  case TOKEN_MINUS_EQUALS:
+  case TOKEN_PLUS_PLUS:
+  case TOKEN_MINUS_MINUS:
+    precedence = PRECEDENCE_ASSIGNMENT;
     break;
   case TOKEN_OR:
     precedence = PRECEDENCE_OR;
@@ -219,6 +227,15 @@ node *parse_grouping(token **token_pointer) {
 operator_type token_type_to_binary_operator_type(token_type type) {
   operator_type operator;
   switch (type) {
+  // Assignment is a binary operator, and these all modify variables, so they are assignment.
+  // Right now this is a revelation, but in the future it'll be common sense.
+  case TOKEN_EQUALS:
+  case TOKEN_PLUS_EQUALS:
+  case TOKEN_MINUS_EQUALS:
+  case TOKEN_PLUS_PLUS:
+  case TOKEN_MINUS_MINUS:
+    operator = OPERATOR_ASSIGN;
+    break;
   case TOKEN_PLUS:
     operator = OPERATOR_ADD;
     break;
@@ -279,12 +296,7 @@ operator_type token_type_to_binary_operator_type(token_type type) {
 node *parse_binary(node *last_expression, token **token_pointer) {
   token *operator_token = pop_token(token_pointer);
   operator_type operator = token_type_to_binary_operator_type(operator_token->type);
-  node *next_expression = NULL;
-  if (operator_token->type == TOKEN_PLUS_PLUS || operator_token->type == TOKEN_MINUS_MINUS) {
-    // Ignore next expression
-  } else {
-     next_expression = parse_expression(get_precedence(operator_token->type) + 1, token_pointer);
-  }
+  node *next_expression = parse_expression(get_precedence(operator_token->type) + 1, token_pointer);
   assert(operator_token->type < 1000);
   assert(last_expression != NULL);
   assert(next_expression != NULL);
@@ -344,6 +356,7 @@ node *parse_struct_member_dereference_get(node *from_expression, token **token_p
   return current_expression;
 }
 
+// Not `i=0`, it is `int i = 1`
 node *parse_variable_assignment(token **token_pointer) {
   node *variable_expression = create_node(NODE_VARIABLE_DECLARATION);
   // TODO: Figure out whether to make new node or roll with 'no type'
@@ -356,6 +369,7 @@ node *parse_variable_assignment(token **token_pointer) {
   return variable_expression;
 }
 
+// `int i;`
 node *parse_variable_declaration(node *variable_expression, token **token_pointer) {
   expect_token(TOKEN_EQUALS, token_pointer);
   variable_expression->type = NODE_VARIABLE_DECLARATION;
@@ -432,6 +446,39 @@ node *parse_unary(token **token_pointer) {
   return current_expression;
 }
 
+node *parse_postfix(node *last_expression, token **token_pointer) {
+  token *operator_token = pop_token(token_pointer);
+  operator_type operator = OPERATOR_SUBTRACT;
+  switch (operator_token->type) {
+  default:
+    printf("Error when parsing postfix: Unknown operator '%s'\n", token_type_to_string(operator_token->type));
+    break;
+  case TOKEN_PLUS_PLUS:
+    operator = OPERATOR_ADD;
+    break;
+  case TOKEN_MINUS_MINUS:
+    operator = OPERATOR_SUBTRACT;
+    break;
+  }
+  // 1
+  node *one = create_node(NODE_NUMBER_LITERAL);
+  one->number_literal.value = 1;
+
+  // i + 1
+  node *plus_expression = create_node(NODE_EQUATION); // Idk what to name this
+  plus_expression->equation.operator = operator;
+  plus_expression->equation.left = last_expression;
+  plus_expression->equation.right = one;
+
+  // i = i + 1
+  node *current_expression = create_node(NODE_EQUATION);
+  current_expression->equation.operator = OPERATOR_ASSIGN;
+  current_expression->equation.left = last_expression;
+  current_expression->equation.right = plus_expression;
+  return current_expression;
+}
+
+
 node *switch_expression(node *last_expression, node *current_expression, token_type type, token **token_pointer) {
   switch (type) {
   case TOKEN_COMMA:
@@ -444,6 +491,8 @@ node *switch_expression(node *last_expression, node *current_expression, token_t
     break;
 
   case TOKEN_NAME:
+    // TODO: Eventually, put "int" type expression parsing in here.
+    // We can check the semantics later, functions in functions are not a problem.
     current_expression = parse_variable_expression(token_pointer);
     break;
 
@@ -456,6 +505,14 @@ node *switch_expression(node *last_expression, node *current_expression, token_t
     current_expression = parse_grouping(token_pointer);
     break;
 
+  case TOKEN_PLUS_PLUS:
+  case TOKEN_MINUS_MINUS:
+    current_expression = parse_postfix(last_expression, token_pointer);
+    break;
+
+  case TOKEN_EQUALS:
+  case TOKEN_PLUS_EQUALS:
+  case TOKEN_MINUS_EQUALS:
   case TOKEN_EQUALS_EQUALS:
   case TOKEN_NOT_EQUALS:
   case TOKEN_LESS_THAN:
@@ -468,9 +525,7 @@ node *switch_expression(node *last_expression, node *current_expression, token_t
   case TOKEN_OR:
   case TOKEN_CARET:
   case TOKEN_PLUS:
-  case TOKEN_PLUS_PLUS:
   case TOKEN_MINUS:
-  case TOKEN_MINUS_MINUS:
   case TOKEN_STAR:
   case TOKEN_SLASH:
   case TOKEN_PERCENT:
@@ -588,13 +643,23 @@ node *parse_for(scope_context *context, int depth, token **token_pointer) {
   expect_token(TOKEN_FOR, token_pointer);
   expect_token(TOKEN_LEFT_PARENTHESES, token_pointer);
   // int i = 0;
-  current_node->for_loop.index_declaration = parse_variable_declaration(parse_variable_attributes(token_pointer), token_pointer);
-  expect_token(TOKEN_SEMI_COLON, token_pointer);
+  if (is_type(context, peek_token(token_pointer)->value)) {
+    current_node->for_loop.index_declaration = parse_type(context, depth, token_pointer);
+  } else {
+    current_node->for_loop.index_declaration = parse_expression(PRECEDENCE_ASSIGNMENT, token_pointer);
+    expect_token(TOKEN_SEMI_COLON, token_pointer);
+  }
+  assert(current_node->for_loop.index_declaration->type == NODE_VARIABLE_DECLARATION);
+  // TODO: Change parse_variable_declaration to require you to remove semicolon.
+  // This also requires changing other similar functions, which is why I will ignore it for now.
+  // Also TODO: Variable declarations are now counted as expressions, or at least dealt with in the expression parser
   // i < 5;
   current_node->for_loop.condition = parse_expression(PRECEDENCE_ASSIGNMENT, token_pointer);
   expect_token(TOKEN_SEMI_COLON, token_pointer);
+  assert(current_node->for_loop.condition->type == NODE_EQUATION);
   // i++;
   current_node->for_loop.index_assignment = parse_expression(PRECEDENCE_ASSIGNMENT, token_pointer);
+  assert(current_node->for_loop.index_assignment->equation.operator == OPERATOR_ASSIGN);
   expect_token(TOKEN_RIGHT_PARENTHESES, token_pointer);
   expect_token(TOKEN_LEFT_BRACE, token_pointer);
   current_node->for_loop.body = parse_block(context, depth + 1, token_pointer);
@@ -697,13 +762,35 @@ void print_block(node *ast, int indent_level) {
     print_block(ast->equation.right, indent_level + 1);
     break;
   case NODE_FUNCTION_CALL: 
-    print_indents(indent_level); printf("Body:\n"); 
-    print_block(ast->function_call.function_expression, indent_level + 1);
-    
     print_indents(indent_level); printf("Inputs:\n");
     for (int i = 0; i < (int)vector_size((vector *)&ast->function_call.inputs); i++) {
       print_block(ast->function_call.inputs[i], indent_level + 1);
     }
+
+    print_indents(indent_level); printf("Body:\n"); 
+    print_block(ast->function_call.function_expression, indent_level + 1);
+    break;
+  case NODE_WHILE:
+    print_indents(indent_level); printf("Condition:\n"); 
+    print_block(ast->while_loop.condition, indent_level + 1);
+    print_indents(indent_level); printf("Body:\n"); 
+    print_block(ast->while_loop.body, indent_level + 1);
+    break;
+  case NODE_DO_WHILE:
+    print_indents(indent_level); printf("Condition:\n"); 
+    print_block(ast->do_while_loop.condition, indent_level + 1);
+    print_indents(indent_level); printf("Body:\n"); 
+    print_block(ast->do_while_loop.body, indent_level + 1);
+    break;
+  case NODE_FOR:
+    print_indents(indent_level); printf("Index Declaration:\n"); 
+    print_block(ast->for_loop.index_declaration, indent_level + 1);
+    print_indents(indent_level); printf("Condition:\n"); 
+    print_block(ast->for_loop.condition, indent_level + 1);
+    print_indents(indent_level); printf("Index Reassignment:\n"); 
+    print_block(ast->for_loop.index_assignment, indent_level + 1);
+    print_indents(indent_level); printf("Body:\n"); 
+    print_block(ast->for_loop.body, indent_level + 1);
     break;
   case NODE_VARIABLE_DECLARATION:
     print_indents(indent_level); printf(": "); vector_print_string(&ast->variable_declaration.name); printf("\n");

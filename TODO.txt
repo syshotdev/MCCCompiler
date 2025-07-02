@@ -1,3 +1,79 @@
+TODO:
+7/1/2025
+Fix hashmap create_or_clear bug for context hashmap
+++ Postfisx operator
+  Wait I can just put this into the expression parser as a separate case
+  Yeah, however I don't remember but it might be put as the "next" expression which would ruin the unary expression
+If statements
+Consts EVERYWERE!
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Replace any "variable" reassignment function with the expression parser
+Type declarations (aka "int"), parsed from expression parser // IMPOSSIBLE: Scrapped (because it includes functions, 
+I don't think those are valid in C). Other reasons that I forgot but you can try implmenting if you want.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 For future me:
 Think about how expressions are parsed and what that means for variable parsing
 1 + 3 * (2 + 2) + i.member

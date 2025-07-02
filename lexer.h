@@ -43,6 +43,8 @@
   X(TOKEN_NAME)                                                                \
                                                                                \
   X(TOKEN_EQUALS)                                                              \
+  X(TOKEN_PLUS_EQUALS)                                                         \
+  X(TOKEN_MINUS_EQUALS)                                                        \
   X(TOKEN_EQUALS_EQUALS)                                                       \
   X(TOKEN_NOT)                                                                 \
   X(TOKEN_NOT_EQUALS)                                                          \

@@ -280,15 +280,35 @@ token *lexer(char_vector chars) {
 
     // Math operations
     case '+':
-      current_token = create_double('+', TOKEN_PLUS, TOKEN_PLUS_PLUS, char_pointer);
-      break;
-    case '-':
+      advance_char(char_pointer);
       switch (peek_char(char_pointer)) {
-      case '>':
-        current_token = create_token(TOKEN_ARROW);
+      case '+':
+        current_token = create_single(TOKEN_PLUS_PLUS, char_pointer);
+        break;
+      case '=':
+        current_token = create_single(TOKEN_PLUS_EQUALS, char_pointer);
         break;
       default:
-        current_token = create_double('-', TOKEN_MINUS, TOKEN_MINUS_MINUS, char_pointer);
+        // We create token here because '+' is already skipped
+        current_token = create_token(TOKEN_PLUS);
+        break;
+      }
+      break;
+    case '-':
+      advance_char(char_pointer);
+      switch (peek_char(char_pointer)) {
+      case '-':
+        current_token = create_single(TOKEN_MINUS_MINUS, char_pointer);
+        break;
+      case '=':
+        current_token = create_single(TOKEN_MINUS_EQUALS, char_pointer);
+        break;
+      case '>':
+        current_token = create_single(TOKEN_ARROW, char_pointer);
+        break;
+      default:
+        // We create token here because '+' is already skipped
+        current_token = create_token(TOKEN_MINUS);
         break;
       }
       break;
