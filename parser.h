@@ -141,7 +141,7 @@ typedef struct node {
       struct node *from;
     } array_get;
     struct {
-      struct node *condition;
+      struct node *condition; // TODO: How do I implement else ifs???
       struct node *success;
       struct node *fail; // Else path (Optional)
     } if_statement;

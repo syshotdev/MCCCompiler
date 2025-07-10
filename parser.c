@@ -68,20 +68,18 @@ int how_many_in_a_row(token_type type, token **token_pointer) {
 }
 
 int compare_string_vectors(const void *a, const void *b, void *_udata) {
-  const char_vector string1 = (char_vector)a;
-  const char_vector string2 = (char_vector)b;
+  const char_vector string1 = *(char_vector*)a;
+  const char_vector string2 = *(char_vector*)b;
   return strncmp(string1, string2, vector_size((vector *)&string1));
 }
 
 uint64_t hash_string_vector(const void *data, uint64_t seed0, uint64_t seed1) {
-  const char_vector string = (char_vector)data;
+  const char_vector string = *(char_vector*)data;
   const size_t char_vector_size = vector_size((vector *)&string);
   return hashmap_sip(string, sizeof(char) * char_vector_size, seed0, seed1);
 }
 
 void create_or_clear_context(scope_context *context, int depth) {
-//assert("HERE" == NULL);
-//TODO: Hashmap clear crashes for some reason. Figure this out later lol
   if (vector_has((vector *)&context->type_hashmaps, depth)) {
     struct hashmap *type_hashmap = *(struct hashmap**)vector_get(&context->type_hashmaps, depth);
     hashmap_clear(type_hashmap, true);
@@ -96,15 +94,15 @@ void add_type_to_context(scope_context *context, char_vector type_name, int dept
   // Just a reminder, 'hashmap_set' takes in hashmap and object.
   // Object has the key (usually object.name), and itself as the value.
   // That is why it is only the 'key' instead of 'key:value'
-  hashmap_set(context->type_hashmaps[depth], type_name);
-  assert(hashmap_get(context->type_hashmaps[depth], type_name) != NULL);
+  hashmap_set(context->type_hashmaps[depth], &type_name);
+  assert(hashmap_get(context->type_hashmaps[depth], &type_name) != NULL);
 }
 
 bool is_type(scope_context *context, char_vector name) {
   hashmap_vector type_hashmaps = context->type_hashmaps;
   assert(type_hashmaps[0] == context->type_hashmaps[0]);
   for (vec_size_t i = 0; i < vector_size((vector *)&type_hashmaps); i++) {
-    if (hashmap_get(type_hashmaps[i], name) != NULL) {
+    if (hashmap_get(type_hashmaps[i], &name) != NULL) {
       return true;
     } else {
       printf("Info: '%.*s' isn't in context/type hashmaps\n", (int)vector_size((vector*)&name), name);
@@ -625,6 +623,7 @@ node *parse_type(scope_context *context, int depth, token **token_pointer) {
     return current_node;
   }
 
+  assert(current_node != NULL);
   assert(current_node->type != NODE_NONE);
   return current_node;
 }
@@ -639,6 +638,8 @@ node *parse_do_while(scope_context *context, int depth, token **token_pointer) {
   expect_token(TOKEN_LEFT_PARENTHESES, token_pointer);
   current_node->while_loop.condition = parse_expression(PRECEDENCE_ASSIGNMENT, token_pointer);
   expect_token(TOKEN_RIGHT_PARENTHESES, token_pointer);
+  expect_token(TOKEN_SEMI_COLON, token_pointer);
+  assert(current_node != NULL);
   return current_node;
 }
 node *parse_while(scope_context *context, int depth, token **token_pointer) {
@@ -650,6 +651,7 @@ node *parse_while(scope_context *context, int depth, token **token_pointer) {
   expect_token(TOKEN_LEFT_BRACE, token_pointer);
   current_node->while_loop.body = parse_block(context, depth + 1, token_pointer);
   expect_token(TOKEN_RIGHT_BRACE, token_pointer);
+  assert(current_node != NULL);
   return current_node;
 }
 node *parse_for(scope_context *context, int depth, token **token_pointer) {
@@ -678,6 +680,29 @@ node *parse_for(scope_context *context, int depth, token **token_pointer) {
   expect_token(TOKEN_LEFT_BRACE, token_pointer);
   current_node->for_loop.body = parse_block(context, depth + 1, token_pointer);
   expect_token(TOKEN_RIGHT_BRACE, token_pointer);
+  assert(current_node != NULL);
+  return current_node;
+}
+
+// if(condition) {}  (NO IF-ELSE STATEMENTS RN)
+node *parse_if(scope_context *context, int depth, token **token_pointer) {
+  node *current_node = create_node(NODE_IF);
+  expect_token(TOKEN_IF, token_pointer);
+  expect_token(TOKEN_LEFT_PARENTHESES, token_pointer);
+  current_node->if_statement.condition = parse_expression(PRECEDENCE_ASSIGNMENT, token_pointer);
+  expect_token(TOKEN_RIGHT_PARENTHESES, token_pointer);
+  expect_token(TOKEN_LEFT_BRACE, token_pointer);
+  current_node->if_statement.success = parse_block(context, depth + 1, token_pointer);
+  expect_token(TOKEN_RIGHT_BRACE, token_pointer);
+  if (peek_token(token_pointer)->type == TOKEN_ELSE) {
+    expect_token(TOKEN_ELSE, token_pointer);
+    expect_token(TOKEN_LEFT_BRACE, token_pointer);
+    current_node->if_statement.fail = parse_block(context, depth + 1, token_pointer);
+    expect_token(TOKEN_RIGHT_BRACE, token_pointer);
+  } else {
+    current_node->if_statement.fail = NULL;
+  }
+  assert(current_node != NULL);
   return current_node;
 }
 
@@ -717,6 +742,10 @@ node *parse_block(scope_context *context, int depth, token **token_pointer) {
       break;
     case TOKEN_FOR:
       current_node = parse_for(context, depth, token_pointer);
+      break;
+
+    case TOKEN_IF:
+      current_node = parse_if(context, depth, token_pointer);
       break;
 
     case TOKEN_LEFT_BRACE:
@@ -809,6 +838,16 @@ void print_block(node *ast, int indent_level) {
     print_indents(indent_level); printf("Body:\n"); 
     print_block(ast->for_loop.body, indent_level + 1);
     break;
+  case NODE_IF:
+    print_indents(indent_level); printf("Condition:\n"); 
+    print_block(ast->if_statement.condition, indent_level + 1);
+    print_indents(indent_level); printf("Success Path:\n"); 
+    print_block(ast->if_statement.success, indent_level + 1);
+    if (ast->if_statement.fail != NULL) {
+      print_indents(indent_level); printf("Fail Path:\n"); 
+      print_block(ast->if_statement.fail, indent_level + 1);
+    }
+    break;
   case NODE_VARIABLE_DECLARATION:
     print_indents(indent_level); printf(": "); vector_print_string(&ast->variable_declaration.name); printf("\n");
 
@@ -835,7 +874,7 @@ node *parser(token *tokens) {
   };
 
   create_or_clear_context(&context, 0);
-  add_type_to_context(&context, _vector_from("int", sizeof(char), 4), 0);
+  add_type_to_context(&context, _vector_from("int\0", sizeof(char), 4), 0);
 
   // Parse scope (with a scope number of one, we declared int for 0'th layer)
   node *ast = parse_block(&context, 1, token_pointer);

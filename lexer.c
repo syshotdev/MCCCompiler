@@ -64,16 +64,17 @@ void advance_till(char terminating_string[], char **char_pointer) {
 }
 
 // Make a string till condition is false, at end finish string and do misc
-void collect_characters(token current_token, bool (*condition)(char), char **char_pointer) {
+// String addr is required as we are reallocating the string, which makes the old string pointer useless.
+void collect_characters(char_vector *string_addr, bool (*condition)(char), char **char_pointer) {
   char current_char = pop_char(char_pointer);
   while (condition(current_char) && current_char != EOF) {
-    vector_add(&current_token.value, current_char);
+    vector_add(string_addr, current_char);
     current_char = pop_char(char_pointer);
   }
   // Return consumed char
   return_char(char_pointer);
   // Add string ending notifier
-  vector_add(&current_token.value, '\0');
+  vector_add(string_addr, '\0');
 }
 
 token create_single(token_type type, char **char_pointer) {
@@ -112,7 +113,7 @@ token create_string(char **char_pointer) {
   vector_resize(&string_token.value, 8);
 
   advance_char(char_pointer); // Remove "
-  collect_characters(string_token, not_quote, char_pointer);
+  collect_characters(&string_token.value, not_quote, char_pointer);
   advance_char(char_pointer); // Remove "
 
   return string_token;
@@ -124,7 +125,7 @@ token create_number(char **char_pointer) {
   token number_token = create_token(TOKEN_NUMBER);
   vector_resize(&number_token.value, 8);
 
-  collect_characters(number_token, isdigit_wrapper, char_pointer);
+  collect_characters(&number_token.value, isdigit_wrapper, char_pointer);
 
   return number_token;
 }
@@ -134,67 +135,73 @@ bool is_valid_keyword_char(char to_check) {
   return isalpha(to_check) || isdigit(to_check) || to_check == '_';
 }
 
-// More readable version of strcmp
-bool value_is(char *value, char *to_compare) {
-  return strcmp(value, to_compare) == 0;
+// Shortcut for strncmp
+bool vector_is(char_vector value, char *to_compare) {
+  // Strings with different sizes are, by definition, different
+  if (vector_size((vector*)&value) - 1 != strlen(to_compare)) {
+    return false;
+  }
+  // Compare strings with size as a restraint
+  return strncmp(value, to_compare, vector_size((vector*)&value)) == 0;
 }
 
 token create_keyword(char **char_pointer) {
   token keyword_token = create_token(TOKEN_NAME);
 
-  collect_characters(keyword_token, is_valid_keyword_char, char_pointer);
+  // It's a miracle that this works
+  collect_characters(&keyword_token.value, is_valid_keyword_char, char_pointer);
 
   char_vector value = keyword_token.value;
   token_type type;
 
   // TODO: Turn this into hashmap (or switch)
-  if (value_is(value, "volatile")) {
+  if (vector_is(value, "volatile")) {
     type = TOKEN_VOLATILE;
-  } else if (value_is(value, "unsigned")) {
+  } else if (vector_is(value, "unsigned")) {
     type = TOKEN_UNSIGNED;
-  } else if (value_is(value, "const")) {
+  } else if (vector_is(value, "const")) {
     type = TOKEN_CONST;
-  } else if (value_is(value, "register")) {
+  } else if (vector_is(value, "register")) {
     type = TOKEN_REGISTER;
-  } else if (value_is(value, "true")) {
+  } else if (vector_is(value, "true")) {
     type = TOKEN_TRUE;
-  } else if (value_is(value, "false")) {
+  } else if (vector_is(value, "false")) {
     type = TOKEN_FALSE;
-  } else if (value_is(value, "null")) {
+  } else if (vector_is(value, "null")) {
     type = TOKEN_NULL;
-  } else if (value_is(value, "sizeof")) {
+  } else if (vector_is(value, "sizeof")) {
     type = TOKEN_SIZEOF;
-  } else if (value_is(value, "typeof")) {
+  } else if (vector_is(value, "typeof")) {
     type = TOKEN_TYPEOF;
-  } else if (value_is(value, "typedef")) {
+  } else if (vector_is(value, "typedef")) {
     type = TOKEN_TYPEDEF;
-  } else if (value_is(value, "struct")) {
+  } else if (vector_is(value, "struct")) {
     type = TOKEN_STRUCT;
-  } else if (value_is(value, "enum")) {
+  } else if (vector_is(value, "enum")) {
     type = TOKEN_ENUM;
-  } else if (value_is(value, "union")) {
+  } else if (vector_is(value, "union")) {
     type = TOKEN_UNION;
-  } else if (value_is(value, "do")) {
+  } else if (vector_is(value, "do")) {
     type = TOKEN_DO;
-  } else if (value_is(value, "while")) {
+  } else if (vector_is(value, "while")) {
     type = TOKEN_WHILE;
-  } else if (value_is(value, "for")) {
+  } else if (vector_is(value, "for")) {
     type = TOKEN_FOR;
-  } else if (value_is(value, "break")) {
+  } else if (vector_is(value, "break")) {
     type = TOKEN_BREAK;
-  } else if (value_is(value, "continue")) {
+  } else if (vector_is(value, "continue")) {
     type = TOKEN_CONTINUE;
-  } else if (value_is(value, "if")) {
+  } else if (vector_is(value, "if")) {
     type = TOKEN_IF;
-  } else if (value_is(value, "else")) {
+  } else if (vector_is(value, "else")) {
     type = TOKEN_ELSE;
-  } else if (value_is(value, "switch")) {
+  } else if (vector_is(value, "switch")) {
     type = TOKEN_SWITCH;
-  } else if (value_is(value, "case")) {
+  } else if (vector_is(value, "case")) {
     type = TOKEN_CASE;
-  } else if (value_is(value, "default")) {
+  } else if (vector_is(value, "default")) {
     type = TOKEN_DEFAULT;
-  } else if (value_is(value, "inline")) {
+  } else if (vector_is(value, "inline")) {
     type = TOKEN_INLINE;
   } else {
     type = TOKEN_NAME;
@@ -209,7 +216,7 @@ token *lexer(char_vector chars) {
   char **char_pointer = &chars;
 
   // Make a vector of pointers so I can avoid memory leaks where I copy
-  // dereferenced token struct and leak the one pointed to
+  // token struct and leak the one originally pointed to
   token *tokens = vector_create();
   vector_resize(&tokens, 16);
   token current_token;
