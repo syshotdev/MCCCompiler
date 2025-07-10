@@ -227,8 +227,8 @@ node *parse_number(token **token_pointer) {
 node *parse_grouping(token **token_pointer) {
   expect_token(TOKEN_LEFT_PARENTHESES, token_pointer);
   node *expression = parse_expression(PRECEDENCE_ASSIGNMENT, token_pointer);
-  assert(expression != NULL);
   expect_token(TOKEN_RIGHT_PARENTHESES, token_pointer);
+  assert(expression != NULL);
   return expression;
 }
 
@@ -301,18 +301,48 @@ operator_type token_type_to_binary_operator_type(token_type type) {
   return operator;
 }
 
+node *equation_equals_equation_and_next(node *last_expression, node *next_expression, operator_type operator, token** token_pointer) {
+  // i + <EXPRESSION>
+  node *plus_expression = create_node(NODE_EQUATION); // Idk what to name this
+  plus_expression->equation.operator = operator;
+  plus_expression->equation.left = last_expression;
+  plus_expression->equation.right = next_expression;
+
+  // i = i + <EXPRESSION>
+  node *current_expression = create_node(NODE_EQUATION);
+  current_expression->equation.operator = OPERATOR_ASSIGN;
+  current_expression->equation.left = last_expression;
+  current_expression->equation.right = plus_expression;
+  return current_expression;
+}
+
 node *parse_binary(node *last_expression, token **token_pointer) {
   token *operator_token = pop_token(token_pointer);
   operator_type operator = token_type_to_binary_operator_type(operator_token->type);
+
   node *next_expression = parse_expression(get_precedence(operator_token->type) + 1, token_pointer);
-  assert(operator_token->type < 1000);
+  
   assert(last_expression != NULL);
   assert(next_expression != NULL);
+  assert(operator_token->type < 1000);
 
   node *current_node = create_node(NODE_EQUATION);
-  current_node->equation.operator = operator;
-  current_node->equation.left = last_expression;
-  current_node->equation.right = next_expression;
+
+  switch (operator_token->type) {
+  case TOKEN_PLUS_EQUALS:
+    current_node = equation_equals_equation_and_next(last_expression, next_expression, 
+        OPERATOR_ADD, token_pointer);
+    break;
+  case TOKEN_MINUS_EQUALS:
+    current_node = equation_equals_equation_and_next(last_expression, next_expression, 
+        OPERATOR_SUBTRACT, token_pointer);
+    break;
+  default:
+    current_node->equation.operator = operator;
+    current_node->equation.left = last_expression;
+    current_node->equation.right = next_expression;
+    break;
+  }
 
   return current_node;
 }
@@ -632,11 +662,11 @@ node *parse_do_while(scope_context *context, int depth, token **token_pointer) {
   node *current_node = create_node(NODE_DO_WHILE);
   expect_token(TOKEN_DO, token_pointer);
   expect_token(TOKEN_LEFT_BRACE, token_pointer);
-  current_node->while_loop.body = parse_block(context, depth + 1, token_pointer);
+  current_node->do_while_loop.body = parse_block(context, depth + 1, token_pointer);
   expect_token(TOKEN_RIGHT_BRACE, token_pointer);
   expect_token(TOKEN_WHILE, token_pointer);
   expect_token(TOKEN_LEFT_PARENTHESES, token_pointer);
-  current_node->while_loop.condition = parse_expression(PRECEDENCE_ASSIGNMENT, token_pointer);
+  current_node->do_while_loop.condition = parse_expression(PRECEDENCE_ASSIGNMENT, token_pointer);
   expect_token(TOKEN_RIGHT_PARENTHESES, token_pointer);
   expect_token(TOKEN_SEMI_COLON, token_pointer);
   assert(current_node != NULL);
