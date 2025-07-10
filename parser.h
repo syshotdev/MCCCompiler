@@ -180,31 +180,6 @@ typedef struct {
   hashmap_vector var_hashmaps;
 } scope_context;
 
-// ALL OF THESE WILL GO INTO NEXT COMPILATION STEP
-// Literally types like int or char* or struct node
-/*
-typedef struct data_type {
-  int size_bytes;
-  struct data_type *children; // Always a vector!
-} data_type;
-
-typedef struct {
-  data_type type;
-  int pointers; // Is this pointer, if so, how much
-} variable;
-
-typedef struct {
-  data_type *parameters;  // Always a vector!
-  data_type *return_type; // Always a vector!
-} function;
-
-typedef struct {
-  hashmap *data_types;
-  hashmap *variables;
-  hashmap *functions;
-  node *ast;
-} ast; */
-
 node *parser(token *tokens);
 
 #endif

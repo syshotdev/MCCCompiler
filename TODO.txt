@@ -1,3 +1,87 @@
+struct point { int x; int y; } *point1;
+typedef struct point { int x; int y; } point;
+
+Those are examples of struct definitions.
+How do I parse them? Idk let's do the simplest possible thing.
+
+This statement creates a struct.
+struct point { int x; int y; };
+
+The struct has a name "point", which should be added into the "type_struct" dictionary
+with the fields that are inside.
+Some functions can be easily reused, especially elsewhere in the compiler:
+Field parser (parameter parsing)
+Struct parser (with or WITHOUT struct type name)
+Error function (Print filename, functionname:linenumber\n"Error: ...")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 TODO:
 7/1/2025
 Fix hashmap create_or_clear bug for context hashmap

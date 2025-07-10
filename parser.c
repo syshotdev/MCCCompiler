@@ -122,10 +122,9 @@ bool should_parse_unary(token_type type) {
   }
 }
 
-// Prototype for later lines
-node *parse_block(scope_context *context, int scope, token **token_pointer);
 // Prototype because it complains about multiple function definitions (It's used
 // before it's defined).
+node *parse_block(scope_context *context, int scope, token **token_pointer);
 node *parse_expression(precedence precedence, token **token_pointer);
 node *parse_variable_expression(token **token_pointer);
 
@@ -235,8 +234,8 @@ node *parse_grouping(token **token_pointer) {
 operator_type token_type_to_binary_operator_type(token_type type) {
   operator_type operator;
   switch (type) {
-  // Assignment is a binary operator, and these all modify variables, so they are assignment.
-  // Right now this is a revelation, but in the future it'll be common sense.
+  // All of these technically reassign a variable, but ++ and +=
+  // must have their own edge cases to be parsed correctly
   case TOKEN_EQUALS:
   case TOKEN_PLUS_EQUALS:
   case TOKEN_MINUS_EQUALS:
@@ -394,7 +393,7 @@ node *parse_struct_member_dereference_get(node *from_expression, token **token_p
   return current_expression;
 }
 
-// Not `i=0`, it is `int i = 1`
+// These next three functions I have no idea what they do
 node *parse_variable_assignment(token **token_pointer) {
   node *variable_expression = create_node(NODE_VARIABLE_DECLARATION);
   // TODO: Figure out whether to make new node or roll with 'no type'
@@ -407,7 +406,6 @@ node *parse_variable_assignment(token **token_pointer) {
   return variable_expression;
 }
 
-// `int i;`
 node *parse_variable_declaration(node *variable_expression, token **token_pointer) {
   expect_token(TOKEN_EQUALS, token_pointer);
   variable_expression->type = NODE_VARIABLE_DECLARATION;
@@ -416,6 +414,7 @@ node *parse_variable_declaration(node *variable_expression, token **token_pointe
   return variable_expression;
 }
 
+// `int i;`
 node *parse_variable_prototype(node *variable_expression, token **token_pointer) {
   expect_token(TOKEN_SEMI_COLON, token_pointer);
   variable_expression->type = NODE_VARIABLE_DECLARATION;
@@ -423,12 +422,13 @@ node *parse_variable_prototype(node *variable_expression, token **token_pointer)
   return variable_expression;
 }
 
+// `i->foop.function()`
 node *parse_variable_expression(token **token_pointer) {
   node *current_expression = create_node(NODE_VARIABLE);
   current_expression->variable.name = pop_token(token_pointer)->value;
 
   bool get_out_of_loop = false;
-  while(get_out_of_loop != true) {
+  while(get_out_of_loop == false) {
     token *operator_token = peek_token(token_pointer);
     switch (operator_token->type){
     default:
@@ -611,12 +611,12 @@ node *parse_function(node *function_expression, token **token_pointer) {
   // Loop till end or TOKEN_RIGHT_PARENTHESES
   while (!is_at_end(token_pointer) && peek_token(token_pointer)->type != TOKEN_RIGHT_PARENTHESES) {
     type_info type = {
-        .name = expect_token(TOKEN_NAME, token_pointer)->value,
-        .pointer_amount = how_many_in_a_row(TOKEN_STAR, token_pointer),
+      .name = expect_token(TOKEN_NAME, token_pointer)->value,
+      .pointer_amount = how_many_in_a_row(TOKEN_STAR, token_pointer),
     };
     parameter current_parameter = {
-        .type = type,
-        .name = expect_token(TOKEN_NAME, token_pointer)->value,
+      .type = type,
+      .name = expect_token(TOKEN_NAME, token_pointer)->value,
     };
     vector_add(&function_expression->function.parameters, current_parameter);
     assert(((parameter *)vector_last(&function_expression->function.parameters))->name == current_parameter.name);
@@ -698,8 +698,7 @@ node *parse_for(scope_context *context, int depth, token **token_pointer) {
   assert(current_node->for_loop.index_declaration->type == NODE_VARIABLE_DECLARATION);
   // TODO: Change parse_variable_declaration to require you to remove semicolon.
   // This also requires changing other similar functions, which is why I will ignore it for now.
-  // Also TODO: Variable declarations are now counted as expressions, or at least dealt with in the expression parser
-  // i < 5;
+  // Also TODO: Variable declarations are now counted as expressions, or at least dealt with in the expression parser i < 5;
   current_node->for_loop.condition = parse_expression(PRECEDENCE_ASSIGNMENT, token_pointer);
   expect_token(TOKEN_SEMI_COLON, token_pointer);
   assert(current_node->for_loop.condition->type == NODE_EQUATION);
@@ -761,6 +760,20 @@ node *parse_block(scope_context *context, int depth, token **token_pointer) {
 
     case TOKEN_TYPEDEF:
       expect_token(TOKEN_TYPEDEF, token_pointer);
+      add_type_to_context(context, current_token->value, depth);
+      break;
+
+    // TODO: Implement structs
+    // Probably need to add variables to the scope context (finally),
+    // Each struct will just be a (type? variable? new struct type?)
+    // with some members, each of those having a type (int), pointer amount,
+    // and a name.
+    // Idk, it should be recursive, and easy to parse structs in structs.
+    // However, maybe that's too complicated and would require a very large
+    // refactor, so if it aint' possible just do the bare minimums.
+    // Good luck future me!
+    case TOKEN_STRUCT:
+      expect_token(TOKEN_STRUCT, token_pointer);
       add_type_to_context(context, current_token->value, depth);
       break;
 
@@ -899,11 +912,12 @@ node *parser(token *tokens) {
   // typedef int myint;
   // myint i = 0;
   scope_context context = {
-      .type_hashmaps = vector_create(),
-      .var_hashmaps = vector_create(),
+    .type_hashmaps = vector_create(),
+    .var_hashmaps = vector_create(),
   };
 
   create_or_clear_context(&context, 0);
+  add_type_to_context(&context, _vector_from("int\0", sizeof(char), 4), 0);
   add_type_to_context(&context, _vector_from("int\0", sizeof(char), 4), 0);
 
   // Parse scope (with a scope number of one, we declared int for 0'th layer)
