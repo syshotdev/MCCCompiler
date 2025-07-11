@@ -1,0 +1,2 @@
+I use this file like scratch paper. It is to get my mind to grasp the
+concepts I am coding. 

@@ -1,204 +1,6 @@
-struct point { int x; int y; } *point1;
-typedef struct point { int x; int y; } point;
-
-Those are examples of struct definitions.
-How do I parse them? Idk let's do the simplest possible thing.
-
-This statement creates a struct.
-struct point { int x; int y; };
-
-The struct has a name "point", which should be added into the "type_struct" dictionary
-with the fields that are inside.
-Some functions can be easily reused, especially elsewhere in the compiler:
-Field parser (parameter parsing)
-Struct parser (with or WITHOUT struct type name)
-Error function (Print filename, functionname:linenumber\n"Error: ...")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-TODO:
-7/1/2025
-Fix hashmap create_or_clear bug for context hashmap
-++ Postfisx operator
-  Wait I can just put this into the expression parser as a separate case
-  Yeah, however I don't remember but it might be put as the "next" expression which would ruin the unary expression
-If statements
-Consts EVERYWERE!
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 Replace any "variable" reassignment function with the expression parser
 Type declarations (aka "int"), parsed from expression parser // IMPOSSIBLE: Scrapped (because it includes functions, 
 I don't think those are valid in C). Other reasons that I forgot but you can try implmenting if you want.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-For future me:
-Think about how expressions are parsed and what that means for variable parsing
-1 + 3 * (2 + 2) + i.member
-1 + expression is created first, with + at top
-Then second plus encapsulates 1 + expression adding it to i.member
-
-The way we will do it is like this:
-We have variable.member.number, we parse variable first as a variable node.
-Then we see the variable, and create a member_get node that has "from" as the variable.
-We then put the name of the member from the "variable". 
-This is returned, and when the "parse_expression" statement sees a period, it passes in last expression
-as the "from" again.
-.member is parsed, and from = "variable", and name = "member"
-Leaving ".number" to be parsed again.
-Ok, I worked it out, now tomorrow I implement it and CLEAN UP THIS CODE!!!
-
-
-
-
-
-
-SCRATCH THIS!!!
-For member gets, I'm wondering how I should structure them.
-Most logically, I have the variable (variable.member.member2), I put the variable in the
-"from" expression of a member_get, and parse the future members into the "member" expression of the
-member_get.
-
-
-
-
-
-
-
-
-
-
-
-
-Parse loops
-Rename parse_scope to parse_block, rename print_ast to print_block
-Add switch statement to print_block that prints out each type
 
 Standardize vector_add and vector_get, either use addresses or actual objects.
 Rename resize to reserve, resize sounds like it would change size rather than make capacity bigger.
@@ -206,6 +8,13 @@ vector_create(initial_capacity)
 Make template thing for parser, aka <type> <name> <statement>, and it will make a node with those details
 
 Completed:
+Error function (Print filename, functionname:linenumber\n"Error: ...")
+Add switch statement to print_block that prints out each type
+Rename parse_scope to parse_block, rename print_ast to print_block
+Parse loops
+If statements
+++ Postfisx operator
+Fix hashmap create_or_clear bug for context hashmap
 Remove all unnecessary code
 AST -> current_node
 current_<type> rather than <type>, because C compiler gets very confused
@@ -213,5 +22,6 @@ Node array = array of node structs rather than pointers
 Error handling for unexpected tokens
 
 Nah:
+Consts EVERYWERE!
 Stack-based allocations for nodes
 Turn all "token_pointers" to an index in the array, rather than a pointer.
