@@ -47,7 +47,7 @@ int main(void) {
 
   char_vector chars = string_from_file(file);
   token *tokens = lexer(chars);
-  parser(tokens);
+  node *ast = parser(tokens);
 
   fclose(file);
 

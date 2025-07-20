@@ -17,7 +17,11 @@
   X(NODE_STRING)                                                               \
   X(NODE_NUMBER_LITERAL)                                                       \
   X(NODE_VARIABLE)                                                             \
+  X(NODE_STRUCTURE)                                                            \
   X(NODE_EQUATION)                                                             \
+                                                                               \
+  X(NODE_POINTER)                                                              \
+  X(NODE_TYPE)                                                                 \
                                                                                \
   X(NODE_STRUCT_MEMBER_GET)                                                    \
   X(NODE_ARRAY_GET)                                                            \
@@ -84,25 +88,13 @@ typedef enum {
   PRECEDENCE_PRIMARY,
 } precedence;
 
-// A type, like 'int'
-// Includes: name, type size, what it contains (char[30] name, int id)
-typedef struct {
-  char_vector name;
-  int pointer_amount;
-} type_info;
-// Parameter could also be '...', but I'm not sure how to implement that
-typedef struct {
-  type_info type;
-  char_vector name;
-} parameter;
-
-typedef parameter *parameter_vector;
 typedef struct node **node_vector;
 typedef struct hashmap **hashmap_vector;
 
 typedef struct node {
   node_type type;
   union {
+    // Datatypes
     struct {
       char_vector value;
     } string;
@@ -114,24 +106,33 @@ typedef struct node {
     } variable;
     struct {
       char_vector name;
-      parameter_vector members;
+      node_vector members;
     } structure;
-    // Operator is binary operator (+-*/%^&) or unary operator
+
+    // Operator is binary operator (+-*/%^&=) or unary operator
     // a and b are statements
     struct {
       operator_type operator;
       struct node *left;
       struct node *right; // Optional based on whether a binary or unary operation
     } equation;
+
+    // Type-building nodes
+    // This refers to typedef map, with types like "int"
     struct {
-      type_info type;
+      char_vector name;
+      // bool is_constant;
+    } base_type;
+    struct {
+      struct node *from;
+    } pointer;
+
+    // A variable declared from a type
+    struct {
+      struct node *type; // Type node (Required)
       char_vector name;
       struct node *value; // Equation after the equals (=) sign (Optional)
     } variable_declaration;
-    struct {
-      char_vector name;
-      struct node *value; // Equation after the equals (=) sign (Required)
-    } variable_assignment;
     struct {
       char_vector name;
       struct node *from;
@@ -162,7 +163,7 @@ typedef struct node {
     struct {
       type_info type;
       char_vector name;
-      parameter_vector parameters;
+      node_vector parameters;
       struct node *body;
     } function;
     struct {
@@ -176,8 +177,13 @@ typedef struct node {
 } node;
 
 typedef struct {
-  hashmap_vector type_hashmaps;
-  hashmap_vector var_hashmaps;
+  char_vector name;
+  struct node *type_expression;
+  int size_bytes;
+} typedef_entry;
+
+typedef struct {
+  hashmap_vector typedef_hashmaps;
 } scope_context;
 
 node *parser(token *tokens);

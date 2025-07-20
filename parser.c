@@ -30,7 +30,7 @@ token *pop_token(token **token_pointer) {
   return current_token;
 }
 
-token *peek_token(token **token_pointer) {
+token* peek_token(token** token_pointer) {
   token *current_token = &(**token_pointer);
   return current_token;
 }
@@ -67,42 +67,42 @@ int how_many_in_a_row(token_type type, token **token_pointer) {
   return number;
 }
 
-int compare_string_vectors(const void *a, const void *b, void *_udata) {
-  const char_vector string1 = *(char_vector*)a;
-  const char_vector string2 = *(char_vector*)b;
-  return strncmp(string1, string2, vector_size((vector *)&string1));
+int compare_typedef_entries(const void *a, const void *b, void *_udata) {
+  const char_vector name1 = ((typedef_entry *)a)->name;
+  const char_vector name2 = ((typedef_entry *)b)->name;
+  if (vector_size((vector *)&name1) != vector_size((vector *)&name2)){
+    return 1;
+  }
+  return strncmp(name1, name2, vector_size((vector *)&name1));
 }
-
-uint64_t hash_string_vector(const void *data, uint64_t seed0, uint64_t seed1) {
-  const char_vector string = *(char_vector*)data;
-  const size_t char_vector_size = vector_size((vector *)&string);
-  return hashmap_sip(string, sizeof(char) * char_vector_size, seed0, seed1);
+uint64_t hash_typedef_entry(const void *data, uint64_t seed0, uint64_t seed1) {
+  const char_vector name = ((typedef_entry *)data)->name;
+  return hashmap_sip(name, vector_size((vector *)&name), seed0, seed1);
 }
-
 void create_or_clear_context(scope_context *context, int depth) {
-  if (vector_has((vector *)&context->type_hashmaps, depth)) {
-    struct hashmap *type_hashmap = *(struct hashmap**)vector_get(&context->type_hashmaps, depth);
+  if (vector_has((vector *)&context->typedef_hashmaps, depth)) {
+    struct hashmap *type_hashmap = *(struct hashmap**)vector_get(&context->typedef_hashmaps, depth);
     hashmap_clear(type_hashmap, true);
   } else {
-    struct hashmap *type_hashmap = hashmap_new(sizeof(char_vector), 1, 0, 0, hash_string_vector, compare_string_vectors, NULL, NULL);
-    vector_insert(&context->type_hashmaps, depth, type_hashmap);
-    assert(*(struct hashmap**)vector_get(&context->type_hashmaps, depth) == type_hashmap);
+    struct hashmap *type_hashmap = hashmap_new(sizeof(node *), 1, 0, 0, hash_typedef_entry, compare_typedef_entries, NULL, NULL);
+    vector_insert(&context->typedef_hashmaps, depth, type_hashmap);
+    assert(*(struct hashmap**)vector_get(&context->typedef_hashmaps, depth) == type_hashmap);
   }
 }
 
-void add_type_to_context(scope_context *context, char_vector type_name, int depth) {
+void add_type_to_context(typedef_entry *object, scope_context *context, int depth) {
   // Just a reminder, 'hashmap_set' takes in hashmap and object.
   // Object has the key (usually object.name), and itself as the value.
   // That is why it is only the 'key' instead of 'key:value'
-  hashmap_set(context->type_hashmaps[depth], &type_name);
-  assert(hashmap_get(context->type_hashmaps[depth], &type_name) != NULL);
+  hashmap_set(context->typedef_hashmaps[depth], &object);
+  assert(hashmap_get(context->typedef_hashmaps[depth], &object) != NULL);
 }
 
-bool is_type(scope_context *context, char_vector name) {
-  hashmap_vector type_hashmaps = context->type_hashmaps;
-  assert(type_hashmaps[0] == context->type_hashmaps[0]);
-  for (vec_size_t i = 0; i < vector_size((vector *)&type_hashmaps); i++) {
-    if (hashmap_get(type_hashmaps[i], &name) != NULL) {
+bool is_type(char_vector name, scope_context *context, int depth) {
+  hashmap_vector typedef_hashmaps = context->typedef_hashmaps;
+  assert(typedef_hashmaps[0] == context->typedef_hashmaps[0]);
+  for (vec_size_t i = 0; i <= depth; i++) {
+    if (hashmap_get(typedef_hashmaps[i], &(typedef_entry){ .name=name }) != NULL) {
       return true;
     } else {
       printf("Info: '%.*s' isn't in context/type hashmaps\n", (int)vector_size((vector*)&name), name);
@@ -234,7 +234,7 @@ node *parse_grouping(token **token_pointer) {
 operator_type token_type_to_binary_operator_type(token_type type) {
   operator_type operator;
   switch (type) {
-  // All of these technically reassign a variable, but ++ and +=
+  // All of these technically reassign a variable, but things like ++ and -=
   // must have their own edge cases to be parsed correctly
   case TOKEN_EQUALS:
   case TOKEN_PLUS_EQUALS:
@@ -323,7 +323,8 @@ node *parse_binary(node *last_expression, token **token_pointer) {
   
   assert(last_expression != NULL);
   assert(next_expression != NULL);
-  assert(operator_token->type < 1000);
+  int unreasonable_type_number = 1000;
+  assert(operator_token->type < unreasonable_type_number);
 
   node *current_node = create_node(NODE_EQUATION);
 
@@ -422,13 +423,13 @@ node *parse_variable_prototype(node *variable_expression, token **token_pointer)
   return variable_expression;
 }
 
-// `i->foop.function()`
+// `i->foo.function()`
 node *parse_variable_expression(token **token_pointer) {
   node *current_expression = create_node(NODE_VARIABLE);
   current_expression->variable.name = pop_token(token_pointer)->value;
 
   bool get_out_of_loop = false;
-  while(get_out_of_loop == false) {
+  while(get_out_of_loop != true) {
     token *operator_token = peek_token(token_pointer);
     switch (operator_token->type){
     default:
@@ -542,7 +543,6 @@ node *switch_expression(node *last_expression, node *current_expression, token_t
     current_expression = parse_number(token_pointer);
     break;
 
-  // Imagine a scenario like this: (get_object()->number++) + 5
   case TOKEN_LEFT_PARENTHESES:
     current_expression = parse_grouping(token_pointer);
     break;
@@ -604,12 +604,16 @@ node *parse_expression(precedence precedence, token **token_pointer) {
   return current_expression;
 }
 
-node *parse_function(node *function_expression, token **token_pointer) {
+node *parse_function(node *function_expression, scope_context *context, int depth, token **token_pointer) {
   function_expression->function.parameters = vector_create();
   expect_token(TOKEN_LEFT_PARENTHESES, token_pointer);
 
   // Loop till end or TOKEN_RIGHT_PARENTHESES
   while (!is_at_end(token_pointer) && peek_token(token_pointer)->type != TOKEN_RIGHT_PARENTHESES) {
+    // Extract loop logic here for more readable code
+    // Use parse_type instead of all this logic here to make variable_declarations without values
+    // That also requires making parse_type ignore commas, as we will be using it legally with commas.
+    // (Yes, I know, janky but I gotta get this done sometime)
     type_info type = {
       .name = expect_token(TOKEN_NAME, token_pointer)->value,
       .pointer_amount = how_many_in_a_row(TOKEN_STAR, token_pointer),
@@ -629,13 +633,10 @@ node *parse_function(node *function_expression, token **token_pointer) {
   return function_expression;
 }
 
-// Parse a variable or function declaration.
-node *parse_type(scope_context *context, int depth, token **token_pointer) {
-  assert(context != NULL);
-
-  node *current_node = parse_variable_attributes(token_pointer);
-  token_type type = peek_token(token_pointer)->type;
-  switch (type) {
+// Extracted logic for parsing variable/function declarations
+node *parse_after_type(node *type_expression, scope_context *context, int depth, token **token_pointer) {
+  token_type token_type = peek_token(token_pointer)->type;
+  switch (token_type) {
   case TOKEN_EQUALS:
     current_node = parse_variable_declaration(current_node, token_pointer);
     break;
@@ -643,13 +644,12 @@ node *parse_type(scope_context *context, int depth, token **token_pointer) {
     current_node = parse_variable_prototype(current_node, token_pointer);
     break;
   case TOKEN_LEFT_PARENTHESES:
-    current_node = parse_function(current_node, token_pointer);
+    current_node = parse_function(context, depth + 1, current_node, token_pointer);
     // Why not parse the body in the "parse function" function???? Bc requires too many parameters
     current_node->function.body = parse_block(context, depth + 1, token_pointer);
     break;
   default:
-    // TODO: Error
-    printf("Error when parsing type: Unknown token '%s'\n", token_type_to_string(type));
+    error("Unknown token: '%s'\n", token_type_to_string(token_type));
     return current_node;
   }
 
@@ -657,6 +657,71 @@ node *parse_type(scope_context *context, int depth, token **token_pointer) {
   assert(current_node->type != NODE_NONE);
   return current_node;
 }
+
+// Just parses "int" into a type
+node *parse_base_type(scope_context *context, int depth, token **token_pointer) {
+  assert(context != NULL);
+  token *type_token = pop_token(token_pointer);
+  typedef_entry key = (struct typedef_entry){.name = current_token->value};
+  if (is_type(&key, context, depth)) {
+    node *type_node = create_node(NODE_TYPE);
+    type_node->base_type.name = key.name;
+    return type_node;
+  } else {
+    error("Supposed '%s' is not in typedef entries.", key.name);
+    exit(1);
+  }
+}
+
+// TODO: Copy parameters
+node *parse_structure() {
+  // struct <name>(optional) { <parse_type multiple times> } <hand off to after_type for variable>;
+  // Typedef? I don't know, this function will suck up the name after the struct so I need to figure
+  // out how I can make typedef override variable name.
+
+
+  // More specific steps:
+  // struct <name> {} // Add type to struct hashmap
+  // struct {} // Build type with no name
+  // Regardless of path, put into "after_type_parsing" and return that
+}
+
+// Includes all types like structs, base types, function pointers, enums, etc.
+// This is a mama function, will not do any of the work. It only calls.
+node *parse_type(scope_context *context, int depth, token **token_pointer) {
+  struct Point {int x, y;};
+  int i = 0;
+  // Yeah I have no idea what I'm doing here. It seemed to clear when I was doing it earlier,
+  // but now I'm not sure which code to put here. Maybe this function IS the mama, and parse_structure
+  // calls this again (kinda recursively if structs in structs) so this does none of the actual parsing.
+  // Oh wait, parse_base_type parses just "int" and after parsing parses var name
+  // Actually before you go "ohhhhh", parse_type will not do after-variable parsing. That is in
+  // the "parse_after_type" function before you confuse yourself. Idk maybe put it in this function
+  // but don't put actual parsing in this function
+  node *type_node = NULL;
+  switch (peek_token(token_pointer)->type) {
+  case TOKEN_STRUCT:
+    type_node = parse_structure();
+    break;
+  default:
+    type_node = parse_base_type();
+    break;
+  }
+  // If struct: parse_structure
+  // If base_type: parse_base_type
+  // Idk probably parse variable afterwards here?
+
+}
+// OK these are the instructions to implement types and structs and things.
+// These are in no particular order.
+// 1. We do not need a struct hashmap. We have a structure that has a name, and typedefs are in the typedef map
+// 2. Base types just have a name, they correspond to something in the types hashmap. We do not have to copy the expression if it's a struct or a more complicated datatype, we can just use the name.
+// 3. Use types for everything. Function parameters are types, basically variable prototypes.
+// 4. Adding on to the previous point, the parse_type function is used everywhere. It's the mama function.
+// 5. In parse_type, parse the type (of course), and then switch based on the next tokens. Var prototype, assignment, or funciton declaration. Who cares which one but that's what we should focus on.
+// 6. More specifically, parse_struct parses struct, no further, and type then carries on and parses the var afterwards.
+// 7. Remove all of the repeated code everywhere. If it aint needed, or can be encapsulated, remove and condense.
+// 8. Eventually need to use consts and clean up the codebase with cleaner methods of doing things. Such as, no magic numbers, and self-documenting code
 
 node *parse_do_while(scope_context *context, int depth, token **token_pointer) {
   node *current_node = create_node(NODE_DO_WHILE);
@@ -738,7 +803,7 @@ node *parse_if(scope_context *context, int depth, token **token_pointer) {
 // Parses a block of tokens between (and excluding) braces, and turns it into an abstract syntax tree.
 node *parse_block(scope_context *context, int depth, token **token_pointer) {
   assert(context != NULL);
-  assert(vector_size((vector *)&context->type_hashmaps) > 0);
+  assert(vector_size((vector *)&context->typedef_hashmaps) > 0);
   assert(depth > 0 && depth < 100);
   assert(token_pointer != NULL);
 
@@ -760,18 +825,11 @@ node *parse_block(scope_context *context, int depth, token **token_pointer) {
 
     case TOKEN_TYPEDEF:
       expect_token(TOKEN_TYPEDEF, token_pointer);
-      add_type_to_context(context, current_token->value, depth);
+      // ...parse type node to put into context hashmap
+      // parse name
+      // put into context hashmap
       break;
 
-    // TODO: Implement structs
-    // Probably need to add variables to the scope context (finally),
-    // Each struct will just be a (type? variable? new struct type?)
-    // with some members, each of those having a type (int), pointer amount,
-    // and a name.
-    // Idk, it should be recursive, and easy to parse structs in structs.
-    // However, maybe that's too complicated and would require a very large
-    // refactor, so if it aint' possible just do the bare minimums.
-    // Good luck future me!
     case TOKEN_STRUCT:
       expect_token(TOKEN_STRUCT, token_pointer);
       add_type_to_context(context, current_token->value, depth);
@@ -798,6 +856,13 @@ node *parse_block(scope_context *context, int depth, token **token_pointer) {
     default:
       // If token is none of these, it is expression or variable declaration.
       // First: check if is a type (int), if not it is an expression. If error, expression will catch it.
+      // What I'm grappling with is that basic types can be added onto. JK they can't
+      // I just realized they can't. The only exception is structs, but those are parsed
+      // separately from "int" and "char". Any other "base types" are typedefs, so we parse
+      // them by first converting them to their "base type" before the typedef, and then using
+      // that instead of the typedef. But also, why not just put int into the typedef map?
+      // It would make the logic a lot easier for now, and I have very limited time so might
+      // as well.
       if (is_type(context, current_token->value)) {
         current_node = parse_type(context, depth, token_pointer);
       } else {
@@ -912,13 +977,22 @@ node *parser(token *tokens) {
   // typedef int myint;
   // myint i = 0;
   scope_context context = {
-    .type_hashmaps = vector_create(),
-    .var_hashmaps = vector_create(),
+    .typedef_hashmaps = vector_create(),
   };
 
   create_or_clear_context(&context, 0);
-  add_type_to_context(&context, _vector_from("int\0", sizeof(char), 4), 0);
-  add_type_to_context(&context, _vector_from("int\0", sizeof(char), 4), 0);
+
+  typedef_entry int_entry = malloc(sizeof(typedef_entry));
+  int_entry.name = _vector_from("int", sizeof(char), 4);
+  int_entry.size_bytes = 4;
+  int_entry.type_expression = NULL; // Base type, not required. Subject to change in the future
+  typedef_entry char_entry = malloc(sizeof(typedef_entry));
+  char_entry.name = _vector_from("char", sizeof(char), 4);
+  char_entry.size_bytes = 1;
+  char_entry.type_expression = NULL; // Base type, not required. Subject to change in the future
+
+  add_type_to_context(&context, int_entry, 0);
+  add_type_to_context(&context, char_entry, 0);
 
   // Parse scope (with a scope number of one, we declared int for 0'th layer)
   node *ast = parse_block(&context, 1, token_pointer);
