@@ -1,7 +1,4 @@
-// Inputs = c source char_pointer, outputs = tokens like TOKEN_EQUALS or
-// TOKEN_STRUCT
-//
-// Also TODO: Lexer, Preprocessor, Parser, Code_Analyzer.c
+// Inputs = c source char_pointer, outputs = tokens like TOKEN_EQUALS or TOKEN_STRUCT
 #include "c-tests/test.h"
 #include "lexer.h"
 #include <ctype.h>

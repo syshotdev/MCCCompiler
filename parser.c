@@ -51,6 +51,25 @@ node *create_node(node_type type) {
   return current_node;
 }
 
+node *create_node(node_type type) {
+  node *node = malloc(sizeof(node));
+  node->type = type;
+  node->children = vector_create();
+  node->data = vector_create();
+  return node;
+}
+
+// Same thing as create_node but *data dereferenced and put into new vector
+node *create_node_with_data(node_type type, char *data) {
+  node *node = malloc(sizeof(node));
+  node->type = type;
+  node->children = vector_create();
+  node->data = vector_create();
+  // Bug here. Add entire vector lol
+  vector_add(&node->data, *data);
+  return node;
+}
+
 bool is_at_end(token **token_pointer) {
   return peek_token(token_pointer)->type == TOKEN_END;
 }
