@@ -5,9 +5,6 @@
 #include "lexer.h"
 #include <stdio.h>
 
-// TODO: Should I use "loops" and "if"s instead of "while" and "for" and "elif"?
-// Basically, generic names over very specific ones? We could just expand the
-// for statement to equal a while loop and I think it would work fine.
 #define ITERATE_NODES_AND(X)                                                   \
   X(NODE_START)                                                                \
   X(NODE_END)                                                                  \
@@ -94,7 +91,6 @@ typedef struct hashmap **hashmap_vector;
 typedef struct node {
   node_type type;
   union {
-    // Datatypes
     struct {
       char_vector value;
     } string;
@@ -105,7 +101,7 @@ typedef struct node {
       char_vector name;
     } variable;
     struct {
-      char_vector name;
+      char_vector name; // Optional (Nameless structs)
       node_vector members;
     } structure;
 
@@ -161,7 +157,7 @@ typedef struct node {
       struct node *body;
     } for_loop;
     struct {
-      type_info type;
+      struct node *type;
       char_vector name;
       node_vector parameters;
       struct node *body;
@@ -178,7 +174,7 @@ typedef struct node {
 
 typedef struct {
   char_vector name;
-  struct node *type_expression;
+  node *type_expression;
   int size_bytes;
 } typedef_entry;
 

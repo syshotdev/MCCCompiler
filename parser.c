@@ -51,42 +51,12 @@ node *create_node(node_type type) {
   return current_node;
 }
 
-node *create_node(node_type type) {
-  node *node = malloc(sizeof(node));
-  node->type = type;
-  node->children = vector_create();
-  node->data = vector_create();
-  return node;
-}
-
-// Same thing as create_node but *data dereferenced and put into new vector
-node *create_node_with_data(node_type type, char *data) {
-  node *node = malloc(sizeof(node));
-  node->type = type;
-  node->children = vector_create();
-  node->data = vector_create();
-  // Bug here. Add entire vector lol
-  vector_add(&node->data, *data);
-  return node;
-}
-
 bool is_at_end(token **token_pointer) {
   return peek_token(token_pointer)->type == TOKEN_END;
 }
 
-int how_many_in_a_row(token_type type, token **token_pointer) {
-  int number = 0;
-  while (true) {
-    if (peek_token(token_pointer)->type != type) {
-      break;
-    }
-    advance_token(token_pointer);
-    number++;
-  }
-  return number;
-}
-
-int compare_typedef_entries(const void *a, const void *b, void *_udata) {
+int compare_typedef_entries(const void *a, const void *b, void *udata) {
+  (void)udata;
   const char_vector name1 = ((typedef_entry *)a)->name;
   const char_vector name2 = ((typedef_entry *)b)->name;
   if (vector_size((vector *)&name1) != vector_size((vector *)&name2)){
@@ -120,7 +90,7 @@ void add_type_to_context(typedef_entry *object, scope_context *context, int dept
 bool is_type(char_vector name, scope_context *context, int depth) {
   hashmap_vector typedef_hashmaps = context->typedef_hashmaps;
   assert(typedef_hashmaps[0] == context->typedef_hashmaps[0]);
-  for (vec_size_t i = 0; i <= depth; i++) {
+  for (vec_size_t i = 0; i <= (vec_size_t)depth; i++) {
     if (hashmap_get(typedef_hashmaps[i], &(typedef_entry){ .name=name }) != NULL) {
       return true;
     } else {
@@ -128,6 +98,33 @@ bool is_type(char_vector name, scope_context *context, int depth) {
     }
   }
   return false;
+}
+
+node *parse_type_expression(scope_context *context, int depth, token **token_pointer);
+node *parse_type(scope_context *context, int depth, token **token_pointer);
+
+// Parse and collect nodes separated by commas. Provide your own node parser.
+node_vector collect_types(token_type right_break_token, scope_context *context, int depth, token **token_pointer) {
+  node_vector members = vector_create(); 
+  while (!is_at_end(token_pointer) &&
+      peek_token(token_pointer)->type != right_break_token) {
+    node *member = parse_type_expression(context, depth, token_pointer);
+    vector_add(&members, member);
+    assert(((node *)vector_last(&members))->type == member->type);
+
+    token *current_token = peek_token(token_pointer);
+    if (current_token->type == TOKEN_COMMA) {
+      expect_token(TOKEN_COMMA, token_pointer);
+      continue;
+    } else if (current_token->type == right_break_token) {
+      continue;
+    } else {
+      error("Expected ',' or '%s', got '%s'",
+            token_type_to_string(right_break_token),
+            token_type_to_string(current_token->type));
+    }
+  }
+  return members;
 }
 
 bool should_parse_unary(token_type type) {
@@ -146,28 +143,6 @@ bool should_parse_unary(token_type type) {
 node *parse_block(scope_context *context, int scope, token **token_pointer);
 node *parse_expression(precedence precedence, token **token_pointer);
 node *parse_variable_expression(token **token_pointer);
-
-// Should be a stack struct such as "parameter" so we only give the info that is required
-// Aka, type, pointer amount, and name
-// This is a measure that should be taken as this mechanism is used everywhere
-node *parse_variable_attributes(token **token_pointer) {
-  // Get the type, how many references, then the name of function/variable
-  type_info type = {
-    .name = expect_token(TOKEN_NAME, token_pointer)->value,
-    .pointer_amount = how_many_in_a_row(TOKEN_STAR, token_pointer),
-  };
-  char_vector name = expect_token(TOKEN_NAME, token_pointer)->value;
-  
-  assert(vector_size((vector*)&type.name) > 0);
-  assert(vector_size((vector*)&name) > 0);
-
-  node *variable_expression = create_node(NODE_NONE);
-  // Set the type_info and name for variables AND functions AND parameters
-  variable_expression->variable_declaration.type = type;
-  variable_expression->variable_declaration.name = name;
-
-  return variable_expression;
-}
 
 precedence get_precedence(token_type type) {
   precedence precedence = PRECEDENCE_ASSIGNMENT;
@@ -311,15 +286,14 @@ operator_type token_type_to_binary_operator_type(token_type type) {
     operator = OPERATOR_OR_OR;
     break;
   default:
-    // TODO: Error
-    printf("Error when parsing binary: Unknown operator '%s'\n", token_type_to_string(type));
+    error("Unknown operator '%s'\n", token_type_to_string(type));
     operator = OPERATOR_ADD;
     break;
   }
   return operator;
 }
 
-node *equation_equals_equation_and_next(node *last_expression, node *next_expression, operator_type operator, token** token_pointer) {
+node *equation_equals_equation_and_next(node *last_expression, node *next_expression, operator_type operator) {
   // i + <EXPRESSION>
   node *plus_expression = create_node(NODE_EQUATION); // Idk what to name this
   plus_expression->equation.operator = operator;
@@ -342,19 +316,17 @@ node *parse_binary(node *last_expression, token **token_pointer) {
   
   assert(last_expression != NULL);
   assert(next_expression != NULL);
-  int unreasonable_type_number = 1000;
+  token_type unreasonable_type_number = 1000;
   assert(operator_token->type < unreasonable_type_number);
 
   node *current_node = create_node(NODE_EQUATION);
 
   switch (operator_token->type) {
   case TOKEN_PLUS_EQUALS:
-    current_node = equation_equals_equation_and_next(last_expression, next_expression, 
-        OPERATOR_ADD, token_pointer);
+    current_node = equation_equals_equation_and_next(last_expression, next_expression, OPERATOR_ADD);
     break;
   case TOKEN_MINUS_EQUALS:
-    current_node = equation_equals_equation_and_next(last_expression, next_expression, 
-        OPERATOR_SUBTRACT, token_pointer);
+    current_node = equation_equals_equation_and_next(last_expression, next_expression, OPERATOR_SUBTRACT);
     break;
   default:
     current_node->equation.operator = operator;
@@ -366,7 +338,6 @@ node *parse_binary(node *last_expression, token **token_pointer) {
   return current_node;
 }
 
-
 // variable.function_pointer(expression, expression)
 // We don't care about what's after this call
 node *parse_function_call(node *from_expression, token **token_pointer) {
@@ -377,7 +348,7 @@ node *parse_function_call(node *from_expression, token **token_pointer) {
   current_node->function_call.inputs = vector_create();
 
   // Loop till end or TOKEN_RIGHT_PARENTHESES
-  // Example: func(1 + 5 + a, "string");
+  // Example: `func(1 + 5 + a, "string");`
   while (!is_at_end(token_pointer) && peek_token(token_pointer)->type != TOKEN_RIGHT_PARENTHESES) {
     node *parameter_expression = parse_expression(PRECEDENCE_ASSIGNMENT, token_pointer);
     vector_add(&current_node->function_call.inputs, parameter_expression);
@@ -399,7 +370,7 @@ node *create_struct_member_get(node *from_expression, token **token_pointer) {
   return current_node;
 }
 
-// variable.member <- This last part
+// `variable.member` <- This last part
 node *parse_struct_member_get(node *from_expression, token **token_pointer) {
   expect_token(TOKEN_DOT, token_pointer);
   return create_struct_member_get(from_expression, token_pointer);
@@ -413,48 +384,16 @@ node *parse_struct_member_dereference_get(node *from_expression, token **token_p
   return current_expression;
 }
 
-// These next three functions I have no idea what they do
-node *parse_variable_assignment(token **token_pointer) {
-  node *variable_expression = create_node(NODE_VARIABLE_DECLARATION);
-  // TODO: Figure out whether to make new node or roll with 'no type'
-  // current_node->variable.type = NULL;
-  // Type is type_info btw for future reference
-  variable_expression->variable_declaration.name = expect_token(TOKEN_NAME, token_pointer)->value;
-  expect_token(TOKEN_EQUALS, token_pointer);
-  variable_expression->variable_declaration.value = parse_expression(PRECEDENCE_ASSIGNMENT, token_pointer);
-  expect_token(TOKEN_SEMI_COLON, token_pointer);
-  return variable_expression;
-}
-
-node *parse_variable_declaration(node *variable_expression, token **token_pointer) {
-  expect_token(TOKEN_EQUALS, token_pointer);
-  variable_expression->type = NODE_VARIABLE_DECLARATION;
-  variable_expression->variable_declaration.value = parse_expression(PRECEDENCE_ASSIGNMENT, token_pointer);
-  expect_token(TOKEN_SEMI_COLON, token_pointer);
-  return variable_expression;
-}
-
-// `int i;`
-node *parse_variable_prototype(node *variable_expression, token **token_pointer) {
-  expect_token(TOKEN_SEMI_COLON, token_pointer);
-  variable_expression->type = NODE_VARIABLE_DECLARATION;
-  variable_expression->variable_declaration.value = NULL;
-  return variable_expression;
-}
-
 // `i->foo.function()`
 node *parse_variable_expression(token **token_pointer) {
   node *current_expression = create_node(NODE_VARIABLE);
   current_expression->variable.name = pop_token(token_pointer)->value;
 
-  bool get_out_of_loop = false;
-  while(get_out_of_loop != true) {
+  while(true) {
     token *operator_token = peek_token(token_pointer);
     switch (operator_token->type){
     default:
-      // If it isn't any operator, get out of the loop
-      get_out_of_loop = true;
-      break;
+      return current_expression;
     case TOKEN_ARROW:
       expect_token(TOKEN_ARROW, token_pointer);
       current_expression = parse_struct_member_dereference_get(current_expression, token_pointer);
@@ -470,7 +409,6 @@ node *parse_variable_expression(token **token_pointer) {
       break;
     }
   }
-  return current_expression;
 }
 
 node *parse_unary(token **token_pointer) {
@@ -478,8 +416,7 @@ node *parse_unary(token **token_pointer) {
   operator_type operator = OPERATOR_NEGATE;
   switch (operator_token->type) {
   default:
-    // TODO: Error
-    printf("Error when parsing unary: Unknown operator '%s'\n", token_type_to_string(operator_token->type));
+    error("Unknown operator '%s'\n", token_type_to_string(operator_token->type));
     return parse_expression(PRECEDENCE_UNARY, token_pointer);
   case TOKEN_PLUS:
     // +NUMBER does nothing
@@ -509,7 +446,7 @@ node *parse_postfix(node *last_expression, token **token_pointer) {
   operator_type operator = OPERATOR_SUBTRACT;
   switch (operator_token->type) {
   default:
-    printf("Error when parsing postfix: Unknown operator '%s'\n", token_type_to_string(operator_token->type));
+    error("Unknown operator '%s'\n", token_type_to_string(operator_token->type));
     break;
   case TOKEN_PLUS_PLUS:
     operator = OPERATOR_ADD;
@@ -518,17 +455,17 @@ node *parse_postfix(node *last_expression, token **token_pointer) {
     operator = OPERATOR_SUBTRACT;
     break;
   }
-  // 1
+  // `1`
   node *one = create_node(NODE_NUMBER_LITERAL);
   one->number_literal.value = 1;
 
-  // i + 1
+  // `i + 1`
   node *plus_expression = create_node(NODE_EQUATION); // Idk what to name this
   plus_expression->equation.operator = operator;
   plus_expression->equation.left = last_expression;
   plus_expression->equation.right = one;
 
-  // i = i + 1
+  // `i = i + 1`
   node *current_expression = create_node(NODE_EQUATION);
   current_expression->equation.operator = OPERATOR_ASSIGN;
   current_expression->equation.left = last_expression;
@@ -545,7 +482,7 @@ node *switch_expression(node *last_expression, node *current_expression, token_t
     // If this path is taken, it means a function overstepped it's boundaries and met
     // a semicolon, right parentheses, or a comma. For now, an expression is numbers, variables, and function
     // calls, and commas do not mean you can put several expressions in the same place.
-    assert("Error in switch_expression: This path isn't supposed to be reached." == NULL);
+    error("This path is not supposed to be reached.");
     break;
 
   case TOKEN_NAME:
@@ -624,123 +561,119 @@ node *parse_expression(precedence precedence, token **token_pointer) {
 }
 
 node *parse_function(node *function_expression, scope_context *context, int depth, token **token_pointer) {
-  function_expression->function.parameters = vector_create();
   expect_token(TOKEN_LEFT_PARENTHESES, token_pointer);
-
-  // Loop till end or TOKEN_RIGHT_PARENTHESES
-  while (!is_at_end(token_pointer) && peek_token(token_pointer)->type != TOKEN_RIGHT_PARENTHESES) {
-    // Extract loop logic here for more readable code
-    // Use parse_type instead of all this logic here to make variable_declarations without values
-    // That also requires making parse_type ignore commas, as we will be using it legally with commas.
-    // (Yes, I know, janky but I gotta get this done sometime)
-    type_info type = {
-      .name = expect_token(TOKEN_NAME, token_pointer)->value,
-      .pointer_amount = how_many_in_a_row(TOKEN_STAR, token_pointer),
-    };
-    parameter current_parameter = {
-      .type = type,
-      .name = expect_token(TOKEN_NAME, token_pointer)->value,
-    };
-    vector_add(&function_expression->function.parameters, current_parameter);
-    assert(((parameter *)vector_last(&function_expression->function.parameters))->name == current_parameter.name);
-    // If we parse expression and token on right is anything but comma or parentheses, syntax error
-    if (peek_token(token_pointer)->type != TOKEN_RIGHT_PARENTHESES) {
-      expect_token(TOKEN_COMMA, token_pointer);
-    }
-  }
+  function_expression->function.parameters = collect_types(TOKEN_RIGHT_PARENTHESES, context, depth, token_pointer);
   expect_token(TOKEN_RIGHT_PARENTHESES, token_pointer);
+  function_expression->function.body = parse_block(context, depth + 1, token_pointer);
   return function_expression;
 }
 
-// Extracted logic for parsing variable/function declarations
-node *parse_after_type(node *type_expression, scope_context *context, int depth, token **token_pointer) {
-  token_type token_type = peek_token(token_pointer)->type;
-  switch (token_type) {
-  case TOKEN_EQUALS:
-    current_node = parse_variable_declaration(current_node, token_pointer);
-    break;
-  case TOKEN_SEMI_COLON:
-    current_node = parse_variable_prototype(current_node, token_pointer);
-    break;
-  case TOKEN_LEFT_PARENTHESES:
-    current_node = parse_function(context, depth + 1, current_node, token_pointer);
-    // Why not parse the body in the "parse function" function???? Bc requires too many parameters
-    current_node->function.body = parse_block(context, depth + 1, token_pointer);
-    break;
-  default:
-    error("Unknown token: '%s'\n", token_type_to_string(token_type));
-    return current_node;
-  }
+// Just puts a type into the type hashmap
+void parse_typedef(scope_context *context, int depth, token **token_pointer) {
+  expect_token(TOKEN_TYPEDEF, token_pointer); 
+  node *type = parse_type(context, depth, token_pointer);
 
-  assert(current_node != NULL);
-  assert(current_node->type != NODE_NONE);
-  return current_node;
+  typedef_entry *entry = malloc(sizeof(typedef_entry));
+  entry->type_expression = type;
+  entry->size_bytes = 8; // TODO: Calculate bytes by looking at all the base types inside of the type node
+  entry->name = expect_token(TOKEN_NAME, token_pointer)->value;
+  add_type_to_context(entry, context, depth);
 }
 
 // Just parses "int" into a type
 node *parse_base_type(scope_context *context, int depth, token **token_pointer) {
   assert(context != NULL);
-  token *type_token = pop_token(token_pointer);
-  typedef_entry key = (struct typedef_entry){.name = current_token->value};
-  if (is_type(&key, context, depth)) {
+  token *type_token = expect_token(TOKEN_NAME, token_pointer);
+  if (is_type(type_token->value, context, depth)) {
     node *type_node = create_node(NODE_TYPE);
-    type_node->base_type.name = key.name;
+    type_node->base_type.name = type_token->value;
     return type_node;
   } else {
-    error("Supposed '%s' is not in typedef entries.", key.name);
+    error("Supposed '%s' is not a type.", type_token->value);
     exit(1);
   }
 }
 
-// TODO: Copy parameters
-node *parse_structure() {
-  // struct <name>(optional) { <parse_type multiple times> } <hand off to after_type for variable>;
-  // Typedef? I don't know, this function will suck up the name after the struct so I need to figure
-  // out how I can make typedef override variable name.
+node *parse_structure_type(scope_context *context, int depth, token **token_pointer) {
+  expect_token(TOKEN_STRUCT, token_pointer);
+  node *struct_node = create_node(NODE_TYPE);
+  token *current_token = peek_token(token_pointer);
 
+  if (current_token->type == TOKEN_NAME) {
+    struct_node->structure.name = expect_token(TOKEN_NAME, token_pointer)->value;
+  } else {
+    struct_node->structure.name = NULL;
+  }
 
-  // More specific steps:
-  // struct <name> {} // Add type to struct hashmap
-  // struct {} // Build type with no name
-  // Regardless of path, put into "after_type_parsing" and return that
+  expect_token(TOKEN_LEFT_BRACE, token_pointer);
+  struct_node->structure.members = collect_types(TOKEN_RIGHT_BRACE, context, depth, token_pointer);
+  expect_token(TOKEN_RIGHT_BRACE, token_pointer);
+  return struct_node;
 }
 
-// Includes all types like structs, base types, function pointers, enums, etc.
-// This is a mama function, will not do any of the work. It only calls.
+// TODO: Figure out what to fix about this. The logic aint logicing...
+// Basically, this function only parses types.
+// The next function parses type expressions, aka `int i = 0` and `int fn(char c) {...}`
+// The thing this should return is a TYPE, not an expression or a variable_expression
+// So, how should it parse types then? Take this example:
+// struct Point { struct { int r, g, b; } Color; int x, y;};
+// We see the struct keyword, we parse structure.
+// Structure parses Point and then members
+// Member 1: struct keyword, no name
+// members, parse basic type, variable declarations without values
+// parse the last name so this is a variable declaration with that type and that name
+// Member 2: parse basic type, parse variable declaration with that type and those names
+//
+// Ok, final wrap-up:
+// Parse the type, then put that into the variable declaration. base type and structure type should
+// use parse_expression_type instead of parse_type to get variable declarations instead of types,
+// because types have no correlation with the variable they correspond to, and variable declarations do.
 node *parse_type(scope_context *context, int depth, token **token_pointer) {
-  struct Point {int x, y;};
-  int i = 0;
-  // Yeah I have no idea what I'm doing here. It seemed to clear when I was doing it earlier,
-  // but now I'm not sure which code to put here. Maybe this function IS the mama, and parse_structure
-  // calls this again (kinda recursively if structs in structs) so this does none of the actual parsing.
-  // Oh wait, parse_base_type parses just "int" and after parsing parses var name
-  // Actually before you go "ohhhhh", parse_type will not do after-variable parsing. That is in
-  // the "parse_after_type" function before you confuse yourself. Idk maybe put it in this function
-  // but don't put actual parsing in this function
   node *type_node = NULL;
   switch (peek_token(token_pointer)->type) {
   case TOKEN_STRUCT:
-    type_node = parse_structure();
+    type_node = parse_structure_type(context, depth, token_pointer);
+    break;
+  case TOKEN_NAME:
+    type_node = parse_base_type(context, depth, token_pointer);
     break;
   default:
-    type_node = parse_base_type();
-    break;
+    error("Unknown type '%s', perhaps I haven't implemented it yet?", 
+        token_type_to_string(peek_token(token_pointer)->type));
   }
-  // If struct: parse_structure
-  // If base_type: parse_base_type
-  // Idk probably parse variable afterwards here?
-
+  return type_node;
 }
-// OK these are the instructions to implement types and structs and things.
-// These are in no particular order.
-// 1. We do not need a struct hashmap. We have a structure that has a name, and typedefs are in the typedef map
-// 2. Base types just have a name, they correspond to something in the types hashmap. We do not have to copy the expression if it's a struct or a more complicated datatype, we can just use the name.
-// 3. Use types for everything. Function parameters are types, basically variable prototypes.
-// 4. Adding on to the previous point, the parse_type function is used everywhere. It's the mama function.
-// 5. In parse_type, parse the type (of course), and then switch based on the next tokens. Var prototype, assignment, or funciton declaration. Who cares which one but that's what we should focus on.
-// 6. More specifically, parse_struct parses struct, no further, and type then carries on and parses the var afterwards.
-// 7. Remove all of the repeated code everywhere. If it aint needed, or can be encapsulated, remove and condense.
-// 8. Eventually need to use consts and clean up the codebase with cleaner methods of doing things. Such as, no magic numbers, and self-documenting code
+
+// Parses a type and the expression after it.
+node *parse_type_expression(scope_context *context, int depth, token **token_pointer) {
+  node *type_expression = create_node(NODE_NONE);
+  // The type variable is located in the same place for functions and variable_declarations
+  type_expression->variable_declaration.type = parse_type(context, depth, token_pointer);
+  // Now, what do I do with this name? Oh nvm it's after the type, was thinking it was before
+  // it my bad
+  type_expression->variable_declaration.name = expect_token(TOKEN_NAME, token_pointer)->value;
+
+  switch (peek_token(token_pointer)->type) {
+  case TOKEN_EQUALS:
+    expect_token(TOKEN_EQUALS, token_pointer);
+    type_expression->type = NODE_VARIABLE_DECLARATION;
+    type_expression->variable_declaration.value = parse_expression(PRECEDENCE_ASSIGNMENT, token_pointer);
+    break;
+  case TOKEN_SEMI_COLON:
+    type_expression->type = NODE_VARIABLE_DECLARATION;
+    type_expression->variable_declaration.value = NULL;
+    break;
+  case TOKEN_LEFT_PARENTHESES:
+    type_expression = parse_function(type_expression, context, depth + 1, token_pointer);
+    break;
+  default:
+    error("Unknown token: '%s'\n", token_type_to_string(peek_token(token_pointer)->type));
+    return type_expression;
+  }
+
+  assert(type_expression != NULL);
+  return type_expression;
+}
 
 node *parse_do_while(scope_context *context, int depth, token **token_pointer) {
   node *current_node = create_node(NODE_DO_WHILE);
@@ -772,21 +705,18 @@ node *parse_for(scope_context *context, int depth, token **token_pointer) {
   node *current_node = create_node(NODE_FOR);
   expect_token(TOKEN_FOR, token_pointer);
   expect_token(TOKEN_LEFT_PARENTHESES, token_pointer);
-  // int i = 0;
-  if (is_type(context, peek_token(token_pointer)->value)) {
-    current_node->for_loop.index_declaration = parse_type(context, depth, token_pointer);
+  // `int i = 0;`
+  if (is_type(peek_token(token_pointer)->value, context, depth)) {
+    current_node->for_loop.index_declaration = parse_type_expression(context, depth, token_pointer);
   } else {
     current_node->for_loop.index_declaration = parse_expression(PRECEDENCE_ASSIGNMENT, token_pointer);
     expect_token(TOKEN_SEMI_COLON, token_pointer);
   }
   assert(current_node->for_loop.index_declaration->type == NODE_VARIABLE_DECLARATION);
-  // TODO: Change parse_variable_declaration to require you to remove semicolon.
-  // This also requires changing other similar functions, which is why I will ignore it for now.
-  // Also TODO: Variable declarations are now counted as expressions, or at least dealt with in the expression parser i < 5;
   current_node->for_loop.condition = parse_expression(PRECEDENCE_ASSIGNMENT, token_pointer);
   expect_token(TOKEN_SEMI_COLON, token_pointer);
   assert(current_node->for_loop.condition->type == NODE_EQUATION);
-  // i++;
+  // `i++;`
   current_node->for_loop.index_assignment = parse_expression(PRECEDENCE_ASSIGNMENT, token_pointer);
   assert(current_node->for_loop.index_assignment->equation.operator == OPERATOR_ASSIGN);
   expect_token(TOKEN_RIGHT_PARENTHESES, token_pointer);
@@ -837,21 +767,16 @@ node *parse_block(scope_context *context, int depth, token **token_pointer) {
   while (current_token->type != TOKEN_END && current_token->type != TOKEN_RIGHT_BRACE) {
     switch (current_token->type) {
     case TOKEN_END:
-      // Add ending notifier
       expect_token(TOKEN_END, token_pointer);
       current_node = create_node(NODE_END);
       break;
 
     case TOKEN_TYPEDEF:
-      expect_token(TOKEN_TYPEDEF, token_pointer);
-      // ...parse type node to put into context hashmap
-      // parse name
-      // put into context hashmap
+      parse_typedef(context, depth, token_pointer);
       break;
 
     case TOKEN_STRUCT:
-      expect_token(TOKEN_STRUCT, token_pointer);
-      add_type_to_context(context, current_token->value, depth);
+      current_node = parse_type_expression(context, depth, token_pointer);
       break;
 
     case TOKEN_DO:
@@ -882,8 +807,8 @@ node *parse_block(scope_context *context, int depth, token **token_pointer) {
       // that instead of the typedef. But also, why not just put int into the typedef map?
       // It would make the logic a lot easier for now, and I have very limited time so might
       // as well.
-      if (is_type(context, current_token->value)) {
-        current_node = parse_type(context, depth, token_pointer);
+      if (is_type(current_token->value, context, depth)) {
+        current_node = parse_type_expression(context, depth, token_pointer);
       } else {
         current_node = parse_expression(PRECEDENCE_ASSIGNMENT, token_pointer);
         expect_token(TOKEN_SEMI_COLON, token_pointer);
@@ -1001,17 +926,17 @@ node *parser(token *tokens) {
 
   create_or_clear_context(&context, 0);
 
-  typedef_entry int_entry = malloc(sizeof(typedef_entry));
-  int_entry.name = _vector_from("int", sizeof(char), 4);
-  int_entry.size_bytes = 4;
-  int_entry.type_expression = NULL; // Base type, not required. Subject to change in the future
-  typedef_entry char_entry = malloc(sizeof(typedef_entry));
-  char_entry.name = _vector_from("char", sizeof(char), 4);
-  char_entry.size_bytes = 1;
-  char_entry.type_expression = NULL; // Base type, not required. Subject to change in the future
+  typedef_entry *int_entry = malloc(sizeof(typedef_entry));
+  int_entry->name = _vector_from("int", sizeof(char), 4);
+  int_entry->size_bytes = 4;
+  int_entry->type_expression = NULL; // Base type, not required. Subject to change in the future
+  typedef_entry *char_entry = malloc(sizeof(typedef_entry));
+  char_entry->name = _vector_from("char", sizeof(char), 4);
+  char_entry->size_bytes = 1;
+  char_entry->type_expression = NULL; // Base type, not required. Subject to change in the future
 
-  add_type_to_context(&context, int_entry, 0);
-  add_type_to_context(&context, char_entry, 0);
+  add_type_to_context(int_entry, &context, 0);
+  add_type_to_context(char_entry, &context, 0);
 
   // Parse scope (with a scope number of one, we declared int for 0'th layer)
   node *ast = parse_block(&context, 1, token_pointer);
