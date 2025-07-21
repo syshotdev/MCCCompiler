@@ -68,29 +68,29 @@ uint64_t hash_typedef_entry(const void *data, uint64_t seed0, uint64_t seed1) {
   const char_vector name = ((typedef_entry *)data)->name;
   return hashmap_sip(name, vector_size((vector *)&name), seed0, seed1);
 }
-void create_or_clear_context(scope_context *context, int depth) {
-  if (vector_has((vector *)&context->typedef_hashmaps, depth)) {
-    struct hashmap *type_hashmap = *(struct hashmap**)vector_get(&context->typedef_hashmaps, depth);
+void create_or_clear_context(scope_context context) {
+  if (vector_has((vector *)&context.typedef_hashmaps, context.depth)) {
+    struct hashmap *type_hashmap = *(struct hashmap**)vector_get(&context.typedef_hashmaps, context.depth);
     hashmap_clear(type_hashmap, true);
   } else {
     struct hashmap *type_hashmap = hashmap_new(sizeof(node *), 1, 0, 0, hash_typedef_entry, compare_typedef_entries, NULL, NULL);
-    vector_insert(&context->typedef_hashmaps, depth, type_hashmap);
-    assert(*(struct hashmap**)vector_get(&context->typedef_hashmaps, depth) == type_hashmap);
+    vector_insert(&context.typedef_hashmaps, context.depth, type_hashmap);
+    assert(*(struct hashmap**)vector_get(&context.typedef_hashmaps, context.depth) == type_hashmap);
   }
 }
 
-void add_type_to_context(typedef_entry *object, scope_context *context, int depth) {
+void add_type_to_context(typedef_entry *object, scope_context context) {
   // Just a reminder, 'hashmap_set' takes in hashmap and object.
   // Object has the key (usually object.name), and itself as the value.
   // That is why it is only the 'key' instead of 'key:value'
-  hashmap_set(context->typedef_hashmaps[depth], &object);
-  assert(hashmap_get(context->typedef_hashmaps[depth], &object) != NULL);
+  hashmap_set(context.typedef_hashmaps[context.depth], &object);
+  assert(hashmap_get(context.typedef_hashmaps[context.depth], &object) != NULL);
 }
 
-bool is_type(char_vector name, scope_context *context, int depth) {
-  hashmap_vector typedef_hashmaps = context->typedef_hashmaps;
-  assert(typedef_hashmaps[0] == context->typedef_hashmaps[0]);
-  for (vec_size_t i = 0; i <= (vec_size_t)depth; i++) {
+bool is_type(char_vector name, scope_context context) {
+  hashmap_vector typedef_hashmaps = context.typedef_hashmaps;
+  assert(typedef_hashmaps[0] == context.typedef_hashmaps[0]);
+  for (vec_size_t i = 0; i <= (vec_size_t)context.depth; i++) {
     if (hashmap_get(typedef_hashmaps[i], &(typedef_entry){ .name=name }) != NULL) {
       return true;
     } else {
@@ -100,15 +100,15 @@ bool is_type(char_vector name, scope_context *context, int depth) {
   return false;
 }
 
-node *parse_type_expression(scope_context *context, int depth, token **token_pointer);
-node *parse_type(scope_context *context, int depth, token **token_pointer);
+node *parse_type_expression(scope_context context, token **token_pointer);
+node *parse_type(scope_context context, token **token_pointer);
 
 // Parse and collect nodes separated by commas. Provide your own node parser.
-node_vector collect_types(token_type right_break_token, scope_context *context, int depth, token **token_pointer) {
+node_vector collect_types(token_type right_break_token, scope_context context, token **token_pointer) {
   node_vector members = vector_create(); 
   while (!is_at_end(token_pointer) &&
       peek_token(token_pointer)->type != right_break_token) {
-    node *member = parse_type_expression(context, depth, token_pointer);
+    node *member = parse_type_expression(context, token_pointer);
     vector_add(&members, member);
     assert(((node *)vector_last(&members))->type == member->type);
 
@@ -140,7 +140,7 @@ bool should_parse_unary(token_type type) {
 
 // Prototype because it complains about multiple function definitions (It's used
 // before it's defined).
-node *parse_block(scope_context *context, int scope, token **token_pointer);
+node *parse_block(scope_context context, token **token_pointer);
 node *parse_expression(precedence precedence, token **token_pointer);
 node *parse_variable_expression(token **token_pointer);
 
@@ -560,31 +560,30 @@ node *parse_expression(precedence precedence, token **token_pointer) {
   return current_expression;
 }
 
-node *parse_function(node *function_expression, scope_context *context, int depth, token **token_pointer) {
+node *parse_function(node *function_expression, scope_context context, token **token_pointer) {
   expect_token(TOKEN_LEFT_PARENTHESES, token_pointer);
-  function_expression->function.parameters = collect_types(TOKEN_RIGHT_PARENTHESES, context, depth, token_pointer);
+  function_expression->function.parameters = collect_types(TOKEN_RIGHT_PARENTHESES, context, token_pointer);
   expect_token(TOKEN_RIGHT_PARENTHESES, token_pointer);
-  function_expression->function.body = parse_block(context, depth + 1, token_pointer);
+  function_expression->function.body = parse_block(context, token_pointer);
   return function_expression;
 }
 
 // Just puts a type into the type hashmap
-void parse_typedef(scope_context *context, int depth, token **token_pointer) {
+void parse_typedef(scope_context context, token **token_pointer) {
   expect_token(TOKEN_TYPEDEF, token_pointer); 
-  node *type = parse_type(context, depth, token_pointer);
+  node *type = parse_type(context, token_pointer);
 
   typedef_entry *entry = malloc(sizeof(typedef_entry));
   entry->type_expression = type;
   entry->size_bytes = 8; // TODO: Calculate bytes by looking at all the base types inside of the type node
   entry->name = expect_token(TOKEN_NAME, token_pointer)->value;
-  add_type_to_context(entry, context, depth);
+  add_type_to_context(entry, context);
 }
 
 // Just parses "int" into a type
-node *parse_base_type(scope_context *context, int depth, token **token_pointer) {
-  assert(context != NULL);
+node *parse_base_type(scope_context context, token **token_pointer) {
   token *type_token = expect_token(TOKEN_NAME, token_pointer);
-  if (is_type(type_token->value, context, depth)) {
+  if (is_type(type_token->value, context)) {
     node *type_node = create_node(NODE_TYPE);
     type_node->base_type.name = type_token->value;
     return type_node;
@@ -594,7 +593,7 @@ node *parse_base_type(scope_context *context, int depth, token **token_pointer) 
   }
 }
 
-node *parse_structure_type(scope_context *context, int depth, token **token_pointer) {
+node *parse_structure_type(scope_context context, token **token_pointer) {
   expect_token(TOKEN_STRUCT, token_pointer);
   node *struct_node = create_node(NODE_TYPE);
   token *current_token = peek_token(token_pointer);
@@ -606,7 +605,7 @@ node *parse_structure_type(scope_context *context, int depth, token **token_poin
   }
 
   expect_token(TOKEN_LEFT_BRACE, token_pointer);
-  struct_node->structure.members = collect_types(TOKEN_RIGHT_BRACE, context, depth, token_pointer);
+  struct_node->structure.members = collect_types(TOKEN_RIGHT_BRACE, context, token_pointer);
   expect_token(TOKEN_RIGHT_BRACE, token_pointer);
   return struct_node;
 }
@@ -628,14 +627,14 @@ node *parse_structure_type(scope_context *context, int depth, token **token_poin
 // Parse the type, then put that into the variable declaration. base type and structure type should
 // use parse_expression_type instead of parse_type to get variable declarations instead of types,
 // because types have no correlation with the variable they correspond to, and variable declarations do.
-node *parse_type(scope_context *context, int depth, token **token_pointer) {
+node *parse_type(scope_context context, token **token_pointer) {
   node *type_node = NULL;
   switch (peek_token(token_pointer)->type) {
   case TOKEN_STRUCT:
-    type_node = parse_structure_type(context, depth, token_pointer);
+    type_node = parse_structure_type(context, token_pointer);
     break;
   case TOKEN_NAME:
-    type_node = parse_base_type(context, depth, token_pointer);
+    type_node = parse_base_type(context, token_pointer);
     break;
   default:
     error("Unknown type '%s', perhaps I haven't implemented it yet?", 
@@ -645,12 +644,10 @@ node *parse_type(scope_context *context, int depth, token **token_pointer) {
 }
 
 // Parses a type and the expression after it.
-node *parse_type_expression(scope_context *context, int depth, token **token_pointer) {
+node *parse_type_expression(scope_context context, token **token_pointer) {
   node *type_expression = create_node(NODE_NONE);
   // The type variable is located in the same place for functions and variable_declarations
-  type_expression->variable_declaration.type = parse_type(context, depth, token_pointer);
-  // Now, what do I do with this name? Oh nvm it's after the type, was thinking it was before
-  // it my bad
+  type_expression->variable_declaration.type = parse_type(context, token_pointer);
   type_expression->variable_declaration.name = expect_token(TOKEN_NAME, token_pointer)->value;
 
   switch (peek_token(token_pointer)->type) {
@@ -664,7 +661,7 @@ node *parse_type_expression(scope_context *context, int depth, token **token_poi
     type_expression->variable_declaration.value = NULL;
     break;
   case TOKEN_LEFT_PARENTHESES:
-    type_expression = parse_function(type_expression, context, depth + 1, token_pointer);
+    type_expression = parse_function(type_expression, context, token_pointer);
     break;
   default:
     error("Unknown token: '%s'\n", token_type_to_string(peek_token(token_pointer)->type));
@@ -675,11 +672,11 @@ node *parse_type_expression(scope_context *context, int depth, token **token_poi
   return type_expression;
 }
 
-node *parse_do_while(scope_context *context, int depth, token **token_pointer) {
+node *parse_do_while(scope_context context, token **token_pointer) {
   node *current_node = create_node(NODE_DO_WHILE);
   expect_token(TOKEN_DO, token_pointer);
   expect_token(TOKEN_LEFT_BRACE, token_pointer);
-  current_node->do_while_loop.body = parse_block(context, depth + 1, token_pointer);
+  current_node->do_while_loop.body = parse_block(context, token_pointer);
   expect_token(TOKEN_RIGHT_BRACE, token_pointer);
   expect_token(TOKEN_WHILE, token_pointer);
   expect_token(TOKEN_LEFT_PARENTHESES, token_pointer);
@@ -689,25 +686,25 @@ node *parse_do_while(scope_context *context, int depth, token **token_pointer) {
   assert(current_node != NULL);
   return current_node;
 }
-node *parse_while(scope_context *context, int depth, token **token_pointer) {
+node *parse_while(scope_context context, token **token_pointer) {
   node *current_node = create_node(NODE_WHILE);
   expect_token(TOKEN_WHILE, token_pointer);
   expect_token(TOKEN_LEFT_PARENTHESES, token_pointer);
   current_node->while_loop.condition = parse_expression(PRECEDENCE_ASSIGNMENT, token_pointer);
   expect_token(TOKEN_RIGHT_PARENTHESES, token_pointer);
   expect_token(TOKEN_LEFT_BRACE, token_pointer);
-  current_node->while_loop.body = parse_block(context, depth + 1, token_pointer);
+  current_node->while_loop.body = parse_block(context, token_pointer);
   expect_token(TOKEN_RIGHT_BRACE, token_pointer);
   assert(current_node != NULL);
   return current_node;
 }
-node *parse_for(scope_context *context, int depth, token **token_pointer) {
+node *parse_for(scope_context context, token **token_pointer) {
   node *current_node = create_node(NODE_FOR);
   expect_token(TOKEN_FOR, token_pointer);
   expect_token(TOKEN_LEFT_PARENTHESES, token_pointer);
   // `int i = 0;`
-  if (is_type(peek_token(token_pointer)->value, context, depth)) {
-    current_node->for_loop.index_declaration = parse_type_expression(context, depth, token_pointer);
+  if (is_type(peek_token(token_pointer)->value, context)) {
+    current_node->for_loop.index_declaration = parse_type_expression(context, token_pointer);
   } else {
     current_node->for_loop.index_declaration = parse_expression(PRECEDENCE_ASSIGNMENT, token_pointer);
     expect_token(TOKEN_SEMI_COLON, token_pointer);
@@ -721,26 +718,26 @@ node *parse_for(scope_context *context, int depth, token **token_pointer) {
   assert(current_node->for_loop.index_assignment->equation.operator == OPERATOR_ASSIGN);
   expect_token(TOKEN_RIGHT_PARENTHESES, token_pointer);
   expect_token(TOKEN_LEFT_BRACE, token_pointer);
-  current_node->for_loop.body = parse_block(context, depth + 1, token_pointer);
+  current_node->for_loop.body = parse_block(context, token_pointer);
   expect_token(TOKEN_RIGHT_BRACE, token_pointer);
   assert(current_node != NULL);
   return current_node;
 }
 
 // if(condition) {}  (NO IF-ELSE STATEMENTS RN)
-node *parse_if(scope_context *context, int depth, token **token_pointer) {
+node *parse_if(scope_context context, token **token_pointer) {
   node *current_node = create_node(NODE_IF);
   expect_token(TOKEN_IF, token_pointer);
   expect_token(TOKEN_LEFT_PARENTHESES, token_pointer);
   current_node->if_statement.condition = parse_expression(PRECEDENCE_ASSIGNMENT, token_pointer);
   expect_token(TOKEN_RIGHT_PARENTHESES, token_pointer);
   expect_token(TOKEN_LEFT_BRACE, token_pointer);
-  current_node->if_statement.success = parse_block(context, depth + 1, token_pointer);
+  current_node->if_statement.success = parse_block(context, token_pointer);
   expect_token(TOKEN_RIGHT_BRACE, token_pointer);
   if (peek_token(token_pointer)->type == TOKEN_ELSE) {
     expect_token(TOKEN_ELSE, token_pointer);
     expect_token(TOKEN_LEFT_BRACE, token_pointer);
-    current_node->if_statement.fail = parse_block(context, depth + 1, token_pointer);
+    current_node->if_statement.fail = parse_block(context, token_pointer);
     expect_token(TOKEN_RIGHT_BRACE, token_pointer);
   } else {
     current_node->if_statement.fail = NULL;
@@ -750,13 +747,14 @@ node *parse_if(scope_context *context, int depth, token **token_pointer) {
 }
 
 // Parses a block of tokens between (and excluding) braces, and turns it into an abstract syntax tree.
-node *parse_block(scope_context *context, int depth, token **token_pointer) {
-  assert(context != NULL);
-  assert(vector_size((vector *)&context->typedef_hashmaps) > 0);
-  assert(depth > 0 && depth < 100);
+node *parse_block(scope_context context, token **token_pointer) {
+  assert(vector_size((vector *)&context.typedef_hashmaps) > 0);
+  assert(context.depth > 0 && context.depth < 100);
   assert(token_pointer != NULL);
 
-  create_or_clear_context(context, depth);
+  // Create new scope space
+  context.depth += 1;
+  create_or_clear_context(context);
 
   node *ast = create_node(NODE_BLOCK);
   ast->block.nodes = vector_create();
@@ -772,43 +770,34 @@ node *parse_block(scope_context *context, int depth, token **token_pointer) {
       break;
 
     case TOKEN_TYPEDEF:
-      parse_typedef(context, depth, token_pointer);
+      parse_typedef(context, token_pointer);
       break;
 
     case TOKEN_STRUCT:
-      current_node = parse_type_expression(context, depth, token_pointer);
+      current_node = parse_type_expression(context, token_pointer);
       break;
 
     case TOKEN_DO:
-      current_node = parse_do_while(context, depth, token_pointer);
+      current_node = parse_do_while(context, token_pointer);
       break;
     case TOKEN_WHILE:
-      current_node = parse_while(context, depth, token_pointer);
+      current_node = parse_while(context, token_pointer);
       break;
     case TOKEN_FOR:
-      current_node = parse_for(context, depth, token_pointer);
+      current_node = parse_for(context, token_pointer);
       break;
 
     case TOKEN_IF:
-      current_node = parse_if(context, depth, token_pointer);
+      current_node = parse_if(context, token_pointer);
       break;
 
     case TOKEN_LEFT_BRACE:
       expect_token(TOKEN_LEFT_BRACE, token_pointer);
-      current_node = parse_block(context, depth + 1, token_pointer);
+      current_node = parse_block(context, token_pointer);
       break;
     default:
-      // If token is none of these, it is expression or variable declaration.
-      // First: check if is a type (int), if not it is an expression. If error, expression will catch it.
-      // What I'm grappling with is that basic types can be added onto. JK they can't
-      // I just realized they can't. The only exception is structs, but those are parsed
-      // separately from "int" and "char". Any other "base types" are typedefs, so we parse
-      // them by first converting them to their "base type" before the typedef, and then using
-      // that instead of the typedef. But also, why not just put int into the typedef map?
-      // It would make the logic a lot easier for now, and I have very limited time so might
-      // as well.
-      if (is_type(current_token->value, context, depth)) {
-        current_node = parse_type_expression(context, depth, token_pointer);
+      if (is_type(current_token->value, context)) {
+        current_node = parse_type_expression(context, token_pointer);
       } else {
         current_node = parse_expression(PRECEDENCE_ASSIGNMENT, token_pointer);
         expect_token(TOKEN_SEMI_COLON, token_pointer);
@@ -917,14 +906,14 @@ node *parser(token *tokens) {
   // Pointer to pointer so we can store state of which token we're on
   token **token_pointer = &tokens;
 
-  // Requires: access tokens, context info (types, ...), depth/indentation/scope
-  // typedef int myint;
-  // myint i = 0;
+  // The reason passing context by value works is that the typedef_hashmaps pointer stays the same,
+  // so you can always access the hashmaps from anywhere. Each context is limited to it's own function's scope, though
   scope_context context = {
     .typedef_hashmaps = vector_create(),
+    .depth = 0,
   };
 
-  create_or_clear_context(&context, 0);
+  create_or_clear_context(context);
 
   typedef_entry *int_entry = malloc(sizeof(typedef_entry));
   int_entry->name = _vector_from("int", sizeof(char), 4);
@@ -935,11 +924,11 @@ node *parser(token *tokens) {
   char_entry->size_bytes = 1;
   char_entry->type_expression = NULL; // Base type, not required. Subject to change in the future
 
-  add_type_to_context(int_entry, &context, 0);
-  add_type_to_context(char_entry, &context, 0);
+  add_type_to_context(int_entry, context);
+  add_type_to_context(char_entry, context);
 
-  // Parse scope (with a scope number of one, we declared int for 0'th layer)
-  node *ast = parse_block(&context, 1, token_pointer);
+  // Parse scope (with a depth number of one, we declared int for 0'th layer)
+  node *ast = parse_block(context, token_pointer);
 
   print_block(ast, 0);
 

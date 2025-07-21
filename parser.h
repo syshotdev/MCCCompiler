@@ -180,6 +180,7 @@ typedef struct {
 
 typedef struct {
   hashmap_vector typedef_hashmaps;
+  vec_size_t depth; // It is mainly used with vectors so vec_size_t for squashing warnings
 } scope_context;
 
 node *parser(token *tokens);
