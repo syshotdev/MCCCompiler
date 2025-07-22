@@ -164,7 +164,7 @@ node *parse_pointers(node *type_node, token **token_pointer) {
 node *parse_base_type(scope_context context, token **token_pointer) {
   token *type_token = expect_token(TOKEN_NAME, token_pointer);
   if (is_type(type_token->value, context)) {
-    node *type_node = create_node(NODE_TYPE);
+    node *type_node = create_node(NODE_BASE_TYPE);
     type_node->base_type.name = type_token->value;
     return type_node;
   } else {
@@ -175,7 +175,7 @@ node *parse_base_type(scope_context context, token **token_pointer) {
 // Parse structs
 node *parse_structure_type(scope_context context, token **token_pointer) {
   expect_token(TOKEN_STRUCT, token_pointer);
-  node *struct_node = create_node(NODE_TYPE);
+  node *struct_node = create_node(NODE_STRUCTURE);
   token *current_token = peek_token(token_pointer);
 
   if (current_token->type == TOKEN_NAME) {
@@ -213,19 +213,27 @@ node *parse_type(scope_context context, token **token_pointer) {
 
   return type_node;
 }
+// STRUCT THINKING GROUNDS:
+// If we encounter a struct keyword in the wild, what should we do? Which function to hand it to?
+// The struct should be parsed like any type, then afterwards, we should see if it has a name.
+// No name? No init expression. This is just a struct type. Stop parsing.
+// Name? Assign the value to it.
+//
+// For ints, `int i;` just equals a variable declaration with no name.
+// For structs, `struct Point {...};` is totally valid, not a variable declaration and is a type
 
-// Parses a type and the expression after it.
+// Parses a type and possibly the expression after it
 node *parse_type_expression(scope_context context, token **token_pointer) {
-  node *type_expression = create_node(NODE_NONE);
+  node *type = parse_type(context, token_pointer);
   // The type variable is located in the same place for functions and variable_declarations
-  type_expression->variable_declaration.type = parse_type(context, token_pointer);
   // TODO: Make struct specific path where it can have no name, and it's just the type definition.
   // Structs can have no name
-  if (peek_token(token_pointer)->type == TOKEN_NAME) {
-    type_expression->variable_declaration.name = expect_token(TOKEN_NAME, token_pointer)->value;
-  } else {
-    type_expression->variable_declaration.name = NULL;
+  if (type->type == NODE_STRUCTURE) {
+    return type;
   }
+  node *type_expression = create_node(NODE_NONE);
+  type_expression->variable_declaration.type = type;
+  type_expression->variable_declaration.name = expect_token(TOKEN_NAME, token_pointer)->value;
 
   assert(type_expression->variable_declaration.type != NULL);
 
@@ -879,11 +887,25 @@ void print_block(node *ast, int indent_level) {
   case NODE_VARIABLE:
     print_indents(indent_level); printf(": "); vector_print_string(&ast->variable.name); printf("\n");
     break;
+  case NODE_STRUCTURE:
+    if (ast->structure.name != NULL) {
+      print_indents(indent_level); printf(": "); vector_print_string(&ast->structure.name); printf("\n");
+    }
+    for (int i = 0; i < (int)vector_size((vector *)&ast->structure.members); i++) {
+      print_block(ast->structure.members[i], indent_level + 1);
+    }
+    break;
   case NODE_EQUATION:
     print_indents(indent_level); printf(": %s\n", operator_type_to_string(ast->equation.operator));
 
     print_block(ast->equation.left, indent_level + 1);
     print_block(ast->equation.right, indent_level + 1);
+    break;
+  case NODE_POINTER:
+    print_block(ast->pointer.to, indent_level + 1);
+    break;
+  case NODE_BASE_TYPE:
+    print_indents(indent_level); printf(": "); vector_print_string(&ast->base_type.name); printf("\n");
     break;
   case NODE_FUNCTION_CALL: 
     print_indents(indent_level); printf("Inputs:\n");
@@ -927,8 +949,10 @@ void print_block(node *ast, int indent_level) {
     }
     break;
   case NODE_VARIABLE_DECLARATION:
+    print_indents(indent_level); printf("Type:\n"); 
+    print_block(ast->variable_declaration.type, indent_level + 1);
+    print_indents(indent_level); printf("Name:\n"); 
     print_indents(indent_level); printf(": "); vector_print_string(&ast->variable_declaration.name); printf("\n");
-
     print_block(ast->variable_declaration.value, indent_level + 1);
     break;
   }

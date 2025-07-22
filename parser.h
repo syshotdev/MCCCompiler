@@ -18,7 +18,7 @@
   X(NODE_EQUATION)                                                             \
                                                                                \
   X(NODE_POINTER)                                                              \
-  X(NODE_TYPE)                                                                 \
+  X(NODE_BASE_TYPE)                                                            \
                                                                                \
   X(NODE_STRUCT_MEMBER_GET)                                                    \
   X(NODE_ARRAY_GET)                                                            \
