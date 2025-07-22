@@ -116,7 +116,7 @@ typedef struct node {
       // bool is_constant;
     } base_type;
     struct {
-      struct node *from;
+      struct node *to;
     } pointer;
 
     // A variable declared from a type
@@ -170,7 +170,7 @@ typedef struct node {
 
 typedef struct {
   char_vector name;
-  node *type_expression;
+  node *type;
   int size_bytes;
 } typedef_entry;
 
@@ -197,9 +197,11 @@ node *create_node(node_type type);
 int compare_typedef_entries(const void *a, const void *b, void *udata);
 uint64_t hash_typedef_entry(const void *data, uint64_t seed0, uint64_t seed1);
 void create_or_clear_context(scope_context context);
-void add_type_to_context(typedef_entry *object, scope_context context);
+void add_type_to_context(typedef_entry object, scope_context context);
 bool is_type(char_vector name, scope_context context);
-node_vector collect_members(token_type right_break_token, scope_context context, token **token_pointer);
+node_vector collect_members(scope_context context, token **token_pointer);
+node_vector collect_parameterss(scope_context context, token **token_pointer);
+node *parse_pointers(node *type_node, token **token_pointer);
 node *parse_base_type(scope_context context, token **token_pointer);
 node *parse_structure_type(scope_context context, token **token_pointer);
 node *parse_type(scope_context context, token **token_pointer);

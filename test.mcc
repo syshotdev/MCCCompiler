@@ -9,7 +9,9 @@ do {
 } while (i < 3);
 ```
 */
+// Yeah my bad, I accidentally made structs use commas instead of semi-colons
+// Will fix in future
 struct user {
   int age;
   char *name;
-}
+};
