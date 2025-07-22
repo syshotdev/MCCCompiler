@@ -5,8 +5,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-const char *node_type_strings[] = {ITERATE_NODES_AND(GENERATE_STRING)};
-const char *operator_type_strings[] = {ITERATE_OPERATORS_AND(GENERATE_STRING)};
+
+const char *node_type_strings[] = { ITERATE_NODES_AND(GENERATE_STRING) };
+const char *operator_type_strings[] = { ITERATE_OPERATORS_AND(GENERATE_STRING) };
 
 const char *node_type_to_string(node_type type) {
   return enum_to_string(type, node_type_strings);
@@ -14,6 +15,8 @@ const char *node_type_to_string(node_type type) {
 const char *operator_type_to_string(operator_type type) {
   return enum_to_string(type, operator_type_strings);
 }
+
+// Base functions
 
 void advance_token(token **token_pointer) {
   // Pointer arithmetic to advance pointer by 1 token length
@@ -23,18 +26,15 @@ void return_token(token **token_pointer) {
   // Pointer arithmetic to de-advance pointer by 1 token length
   *token_pointer -= 1;
 }
-
 token *pop_token(token **token_pointer) {
   token *current_token = &(**token_pointer);
   advance_token(token_pointer);
   return current_token;
 }
-
-token* peek_token(token** token_pointer) {
+token *peek_token(token **token_pointer) {
   token *current_token = &(**token_pointer);
   return current_token;
 }
-
 token *expect_token(token_type type, token **token_pointer) {
   token *current_token = pop_token(token_pointer);
   if (current_token->type != type) {
@@ -44,6 +44,9 @@ token *expect_token(token_type type, token **token_pointer) {
   }
   return current_token;
 }
+bool is_at_end(token **token_pointer) {
+  return peek_token(token_pointer)->type == TOKEN_END;
+}
 
 node *create_node(node_type type) {
   node *current_node = malloc(sizeof(node));
@@ -51,9 +54,7 @@ node *create_node(node_type type) {
   return current_node;
 }
 
-bool is_at_end(token **token_pointer) {
-  return peek_token(token_pointer)->type == TOKEN_END;
-}
+// Types
 
 int compare_typedef_entries(const void *a, const void *b, void *udata) {
   (void)udata;
@@ -100,11 +101,87 @@ bool is_type(char_vector name, scope_context context) {
   return false;
 }
 
-node *parse_type_expression(scope_context context, token **token_pointer);
-node *parse_type(scope_context context, token **token_pointer);
+// Just parses "int" into a type
+node *parse_base_type(scope_context context, token **token_pointer) {
+  token *type_token = expect_token(TOKEN_NAME, token_pointer);
+  if (is_type(type_token->value, context)) {
+    node *type_node = create_node(NODE_TYPE);
+    type_node->base_type.name = type_token->value;
+    return type_node;
+  } else {
+    error("Supposed '%s' is not a type.", type_token->value);
+    exit(1);
+  }
+}
 
-// Parse and collect nodes separated by commas. Provide your own node parser.
-node_vector collect_types(token_type right_break_token, scope_context context, token **token_pointer) {
+// Parse structs
+node *parse_structure_type(scope_context context, token **token_pointer) {
+  expect_token(TOKEN_STRUCT, token_pointer);
+  node *struct_node = create_node(NODE_TYPE);
+  token *current_token = peek_token(token_pointer);
+
+  if (current_token->type == TOKEN_NAME) {
+    struct_node->structure.name = expect_token(TOKEN_NAME, token_pointer)->value;
+  } else {
+    struct_node->structure.name = NULL;
+  }
+
+  expect_token(TOKEN_LEFT_BRACE, token_pointer);
+  // TODO: Error in my logic here: members are supposed to be separated by SEMICOLONS, NOT COMMAS!
+  struct_node->structure.members = collect_members(TOKEN_RIGHT_BRACE, context, token_pointer);
+  expect_token(TOKEN_RIGHT_BRACE, token_pointer);
+  return struct_node;
+}
+
+// Parse a type like an `int` or a `struct`, and nothing more
+node *parse_type(scope_context context, token **token_pointer) {
+  node *type_node = NULL;
+  switch (peek_token(token_pointer)->type) {
+  case TOKEN_STRUCT:
+    type_node = parse_structure_type(context, token_pointer);
+    break;
+  case TOKEN_NAME:
+    type_node = parse_base_type(context, token_pointer);
+    break;
+  default:
+    error("Unknown type '%s', perhaps I haven't implemented it yet?", 
+        token_type_to_string(peek_token(token_pointer)->type));
+  }
+  return type_node;
+}
+
+// Parses a type and the expression after it.
+node *parse_type_expression(scope_context context, token **token_pointer) {
+  node *type_expression = create_node(NODE_NONE);
+  // The type variable is located in the same place for functions and variable_declarations
+  type_expression->variable_declaration.type = parse_type(context, token_pointer);
+  type_expression->variable_declaration.name = expect_token(TOKEN_NAME, token_pointer)->value;
+
+  switch (peek_token(token_pointer)->type) {
+  case TOKEN_EQUALS:
+    expect_token(TOKEN_EQUALS, token_pointer);
+    type_expression->type = NODE_VARIABLE_DECLARATION;
+    type_expression->variable_declaration.value = parse_expression(PRECEDENCE_ASSIGNMENT, token_pointer);
+    break;
+  case TOKEN_SEMI_COLON:
+    type_expression->type = NODE_VARIABLE_DECLARATION;
+    type_expression->variable_declaration.value = NULL;
+    break;
+  case TOKEN_LEFT_PARENTHESES:
+    type_expression = parse_function(type_expression, context, token_pointer);
+    break;
+  default:
+    error("Unknown token: '%s'\n", token_type_to_string(peek_token(token_pointer)->type));
+    return type_expression;
+  }
+
+  assert(type_expression != NULL);
+  return type_expression;
+}
+
+// Parse and collect typed nodes separated by commas
+// Ex: (int i, struct Point {...}, ...)
+node_vector collect_members(token_type right_break_token, scope_context context, token **token_pointer) {
   node_vector members = vector_create(); 
   while (!is_at_end(token_pointer) &&
       peek_token(token_pointer)->type != right_break_token) {
@@ -127,22 +204,7 @@ node_vector collect_types(token_type right_break_token, scope_context context, t
   return members;
 }
 
-bool should_parse_unary(token_type type) {
-  switch (type) {
-  default:
-    return false;
-  case TOKEN_MINUS:
-  case TOKEN_PLUS:
-  case TOKEN_NOT:
-    return true;
-  }
-}
-
-// Prototype because it complains about multiple function definitions (It's used
-// before it's defined).
-node *parse_block(scope_context context, token **token_pointer);
-node *parse_expression(precedence precedence, token **token_pointer);
-node *parse_variable_expression(token **token_pointer);
+// Parsing helpers
 
 precedence get_precedence(token_type type) {
   precedence precedence = PRECEDENCE_ASSIGNMENT;
@@ -201,34 +263,10 @@ precedence get_precedence(token_type type) {
   return precedence;
 }
 
-node *parse_string(token **token_pointer) {
-  node *string_node = create_node(NODE_STRING);
-  // Get value from that token that sent us here
-  string_node->string.value = pop_token(token_pointer)->value;
-  return string_node;
-}
-
-node *parse_number(token **token_pointer) {
-  node *number_node = create_node(NODE_NUMBER_LITERAL);
-  // Get value from that token that sent us here
-  int value = atoi(pop_token(token_pointer)->value);
-  number_node->number_literal.value = value;
-
-  return number_node;
-}
-
-node *parse_grouping(token **token_pointer) {
-  expect_token(TOKEN_LEFT_PARENTHESES, token_pointer);
-  node *expression = parse_expression(PRECEDENCE_ASSIGNMENT, token_pointer);
-  expect_token(TOKEN_RIGHT_PARENTHESES, token_pointer);
-  assert(expression != NULL);
-  return expression;
-}
-
-operator_type token_type_to_binary_operator_type(token_type type) {
+operator_type get_binary_type(token_type type) {
   operator_type operator;
   switch (type) {
-  // All of these technically reassign a variable, but things like ++ and -=
+  // All of these technically reassign a variable, but categories like ++ and -=
   // must have their own edge cases to be parsed correctly
   case TOKEN_EQUALS:
   case TOKEN_PLUS_EQUALS:
@@ -280,10 +318,10 @@ operator_type token_type_to_binary_operator_type(token_type type) {
     operator = OPERATOR_GREATER_THAN_EQUALS;
     break;
   case TOKEN_AND:
-    operator = OPERATOR_AND_AND;
+    operator = OPERATOR_BOOLEAN_AND;
     break;
   case TOKEN_OR:
-    operator = OPERATOR_OR_OR;
+    operator = OPERATOR_BOOLEAN_OR;
     break;
   default:
     error("Unknown operator '%s'\n", token_type_to_string(type));
@@ -293,7 +331,18 @@ operator_type token_type_to_binary_operator_type(token_type type) {
   return operator;
 }
 
-node *equation_equals_equation_and_next(node *last_expression, node *next_expression, operator_type operator) {
+bool should_parse_unary(token_type type) {
+  switch (type) {
+  default:
+    return false;
+  case TOKEN_MINUS:
+  case TOKEN_PLUS:
+  case TOKEN_NOT:
+    return true;
+  }
+}
+
+node *create_equation_equals_equation_and_next(node *last_expression, node *next_expression, operator_type operator) {
   // i + <EXPRESSION>
   node *plus_expression = create_node(NODE_EQUATION); // Idk what to name this
   plus_expression->equation.operator = operator;
@@ -308,60 +357,6 @@ node *equation_equals_equation_and_next(node *last_expression, node *next_expres
   return current_expression;
 }
 
-node *parse_binary(node *last_expression, token **token_pointer) {
-  token *operator_token = pop_token(token_pointer);
-  operator_type operator = token_type_to_binary_operator_type(operator_token->type);
-
-  node *next_expression = parse_expression(get_precedence(operator_token->type) + 1, token_pointer);
-  
-  assert(last_expression != NULL);
-  assert(next_expression != NULL);
-  token_type unreasonable_type_number = 1000;
-  assert(operator_token->type < unreasonable_type_number);
-
-  node *current_node = create_node(NODE_EQUATION);
-
-  switch (operator_token->type) {
-  case TOKEN_PLUS_EQUALS:
-    current_node = equation_equals_equation_and_next(last_expression, next_expression, OPERATOR_ADD);
-    break;
-  case TOKEN_MINUS_EQUALS:
-    current_node = equation_equals_equation_and_next(last_expression, next_expression, OPERATOR_SUBTRACT);
-    break;
-  default:
-    current_node->equation.operator = operator;
-    current_node->equation.left = last_expression;
-    current_node->equation.right = next_expression;
-    break;
-  }
-
-  return current_node;
-}
-
-// variable.function_pointer(expression, expression)
-// We don't care about what's after this call
-node *parse_function_call(node *from_expression, token **token_pointer) {
-  assert(from_expression != NULL);
-
-  node *current_node = create_node(NODE_FUNCTION_CALL);
-  current_node->function_call.function_expression = from_expression;
-  current_node->function_call.inputs = vector_create();
-
-  // Loop till end or TOKEN_RIGHT_PARENTHESES
-  // Example: `func(1 + 5 + a, "string");`
-  while (!is_at_end(token_pointer) && peek_token(token_pointer)->type != TOKEN_RIGHT_PARENTHESES) {
-    node *parameter_expression = parse_expression(PRECEDENCE_ASSIGNMENT, token_pointer);
-    vector_add(&current_node->function_call.inputs, parameter_expression);
-    assert(*(node **)vector_last(&current_node->function_call.inputs) == parameter_expression);
-    // If we parse expression and token on right is anything but comma or parentheses, syntax error
-    if (peek_token(token_pointer)->type != TOKEN_RIGHT_PARENTHESES) {
-      expect_token(TOKEN_COMMA, token_pointer);
-    }
-  }
-
-  return current_node;
-}
-
 node *create_struct_member_get(node *from_expression, token **token_pointer) {
   node *current_node = create_node(NODE_STRUCT_MEMBER_GET);
   current_node->struct_member_get.from = from_expression;
@@ -370,18 +365,20 @@ node *create_struct_member_get(node *from_expression, token **token_pointer) {
   return current_node;
 }
 
-// `variable.member` <- This last part
-node *parse_struct_member_get(node *from_expression, token **token_pointer) {
-  expect_token(TOKEN_DOT, token_pointer);
-  return create_struct_member_get(from_expression, token_pointer);
+// Parsing (yay finally after 350 lines!!!)
+
+node *parse_string(token **token_pointer) {
+  node *string_node = create_node(NODE_STRING);
+  string_node->string.value = pop_token(token_pointer)->value;
+  return string_node;
 }
 
-node *parse_struct_member_dereference_get(node *from_expression, token **token_pointer) {
-  node *current_expression = create_node(NODE_EQUATION);
-  current_expression->equation.operator = OPERATOR_DEREFERENCE;
-  current_expression->equation.left = create_struct_member_get(from_expression, token_pointer);
-  current_expression->equation.right = NULL;
-  return current_expression;
+node *parse_number(token **token_pointer) {
+  node *number_node = create_node(NODE_NUMBER_LITERAL);
+  int value = atoi(pop_token(token_pointer)->value);
+  number_node->number_literal.value = value;
+
+  return number_node;
 }
 
 // `i->foo.function()`
@@ -409,6 +406,90 @@ node *parse_variable_expression(token **token_pointer) {
       break;
     }
   }
+}
+
+// `variable.member` <- This last part
+node *parse_struct_member_get(node *from_expression, token **token_pointer) {
+  expect_token(TOKEN_DOT, token_pointer);
+  return create_struct_member_get(from_expression, token_pointer);
+}
+
+node *parse_struct_member_dereference_get(node *from_expression, token **token_pointer) {
+  node *current_expression = create_node(NODE_EQUATION);
+  current_expression->equation.operator = OPERATOR_DEREFERENCE;
+  current_expression->equation.left = create_struct_member_get(from_expression, token_pointer);
+  current_expression->equation.right = NULL;
+  return current_expression;
+}
+
+// Parse the actual function
+node *parse_function(node *function_expression, scope_context context, token **token_pointer) {
+  expect_token(TOKEN_LEFT_PARENTHESES, token_pointer);
+  function_expression->function.parameters = collect_members(TOKEN_RIGHT_PARENTHESES, context, token_pointer);
+  expect_token(TOKEN_RIGHT_PARENTHESES, token_pointer);
+  function_expression->function.body = parse_block(context, token_pointer);
+  return function_expression;
+}
+
+// variable.function_pointer(expression, expression)
+// We don't care about what's after this call
+node *parse_function_call(node *from_expression, token **token_pointer) {
+  assert(from_expression != NULL);
+
+  node *current_node = create_node(NODE_FUNCTION_CALL);
+  current_node->function_call.function_expression = from_expression;
+  current_node->function_call.inputs = vector_create();
+
+  // Loop till end or TOKEN_RIGHT_PARENTHESES
+  // Example: `func(1 + 5 + a, "string");`
+  while (!is_at_end(token_pointer) && peek_token(token_pointer)->type != TOKEN_RIGHT_PARENTHESES) {
+    node *parameter_expression = parse_expression(PRECEDENCE_ASSIGNMENT, token_pointer);
+    vector_add(&current_node->function_call.inputs, parameter_expression);
+    assert(*(node **)vector_last(&current_node->function_call.inputs) == parameter_expression);
+    // If we parse expression and token on right is anything but comma or parentheses, syntax error
+    if (peek_token(token_pointer)->type != TOKEN_RIGHT_PARENTHESES) {
+      expect_token(TOKEN_COMMA, token_pointer);
+    }
+  }
+
+  return current_node;
+}
+
+node *parse_grouping(token **token_pointer) {
+  expect_token(TOKEN_LEFT_PARENTHESES, token_pointer);
+  node *expression = parse_expression(PRECEDENCE_ASSIGNMENT, token_pointer);
+  expect_token(TOKEN_RIGHT_PARENTHESES, token_pointer);
+  return expression;
+}
+
+node *parse_binary(node *last_expression, token **token_pointer) {
+  token *operator_token = pop_token(token_pointer);
+  operator_type operator = get_binary_type(operator_token->type);
+
+  node *next_expression = parse_expression(get_precedence(operator_token->type) + 1, token_pointer);
+  
+  assert(last_expression != NULL);
+  assert(next_expression != NULL);
+  token_type unreasonable_type_number = 1000;
+  assert(operator_token->type < unreasonable_type_number);
+
+  node *current_node = create_node(NODE_EQUATION);
+
+  switch (operator_token->type) {
+  case TOKEN_PLUS_EQUALS:
+    current_node = create_equation_equals_equation_and_next(last_expression, next_expression, OPERATOR_ADD);
+    break;
+  case TOKEN_MINUS_EQUALS:
+    current_node = create_equation_equals_equation_and_next(last_expression, next_expression, OPERATOR_SUBTRACT);
+    break;
+  default:
+    current_node->equation.operator = operator;
+    current_node->equation.left = last_expression;
+    current_node->equation.right = next_expression;
+    break;
+  }
+
+  return current_node;
 }
 
 node *parse_unary(token **token_pointer) {
@@ -560,118 +641,6 @@ node *parse_expression(precedence precedence, token **token_pointer) {
   return current_expression;
 }
 
-node *parse_function(node *function_expression, scope_context context, token **token_pointer) {
-  expect_token(TOKEN_LEFT_PARENTHESES, token_pointer);
-  function_expression->function.parameters = collect_types(TOKEN_RIGHT_PARENTHESES, context, token_pointer);
-  expect_token(TOKEN_RIGHT_PARENTHESES, token_pointer);
-  function_expression->function.body = parse_block(context, token_pointer);
-  return function_expression;
-}
-
-// Just puts a type into the type hashmap
-void parse_typedef(scope_context context, token **token_pointer) {
-  expect_token(TOKEN_TYPEDEF, token_pointer); 
-  node *type = parse_type(context, token_pointer);
-
-  typedef_entry *entry = malloc(sizeof(typedef_entry));
-  entry->type_expression = type;
-  entry->size_bytes = 8; // TODO: Calculate bytes by looking at all the base types inside of the type node
-  entry->name = expect_token(TOKEN_NAME, token_pointer)->value;
-  add_type_to_context(entry, context);
-}
-
-// Just parses "int" into a type
-node *parse_base_type(scope_context context, token **token_pointer) {
-  token *type_token = expect_token(TOKEN_NAME, token_pointer);
-  if (is_type(type_token->value, context)) {
-    node *type_node = create_node(NODE_TYPE);
-    type_node->base_type.name = type_token->value;
-    return type_node;
-  } else {
-    error("Supposed '%s' is not a type.", type_token->value);
-    exit(1);
-  }
-}
-
-node *parse_structure_type(scope_context context, token **token_pointer) {
-  expect_token(TOKEN_STRUCT, token_pointer);
-  node *struct_node = create_node(NODE_TYPE);
-  token *current_token = peek_token(token_pointer);
-
-  if (current_token->type == TOKEN_NAME) {
-    struct_node->structure.name = expect_token(TOKEN_NAME, token_pointer)->value;
-  } else {
-    struct_node->structure.name = NULL;
-  }
-
-  expect_token(TOKEN_LEFT_BRACE, token_pointer);
-  struct_node->structure.members = collect_types(TOKEN_RIGHT_BRACE, context, token_pointer);
-  expect_token(TOKEN_RIGHT_BRACE, token_pointer);
-  return struct_node;
-}
-
-// TODO: Figure out what to fix about this. The logic aint logicing...
-// Basically, this function only parses types.
-// The next function parses type expressions, aka `int i = 0` and `int fn(char c) {...}`
-// The thing this should return is a TYPE, not an expression or a variable_expression
-// So, how should it parse types then? Take this example:
-// struct Point { struct { int r, g, b; } Color; int x, y;};
-// We see the struct keyword, we parse structure.
-// Structure parses Point and then members
-// Member 1: struct keyword, no name
-// members, parse basic type, variable declarations without values
-// parse the last name so this is a variable declaration with that type and that name
-// Member 2: parse basic type, parse variable declaration with that type and those names
-//
-// Ok, final wrap-up:
-// Parse the type, then put that into the variable declaration. base type and structure type should
-// use parse_expression_type instead of parse_type to get variable declarations instead of types,
-// because types have no correlation with the variable they correspond to, and variable declarations do.
-node *parse_type(scope_context context, token **token_pointer) {
-  node *type_node = NULL;
-  switch (peek_token(token_pointer)->type) {
-  case TOKEN_STRUCT:
-    type_node = parse_structure_type(context, token_pointer);
-    break;
-  case TOKEN_NAME:
-    type_node = parse_base_type(context, token_pointer);
-    break;
-  default:
-    error("Unknown type '%s', perhaps I haven't implemented it yet?", 
-        token_type_to_string(peek_token(token_pointer)->type));
-  }
-  return type_node;
-}
-
-// Parses a type and the expression after it.
-node *parse_type_expression(scope_context context, token **token_pointer) {
-  node *type_expression = create_node(NODE_NONE);
-  // The type variable is located in the same place for functions and variable_declarations
-  type_expression->variable_declaration.type = parse_type(context, token_pointer);
-  type_expression->variable_declaration.name = expect_token(TOKEN_NAME, token_pointer)->value;
-
-  switch (peek_token(token_pointer)->type) {
-  case TOKEN_EQUALS:
-    expect_token(TOKEN_EQUALS, token_pointer);
-    type_expression->type = NODE_VARIABLE_DECLARATION;
-    type_expression->variable_declaration.value = parse_expression(PRECEDENCE_ASSIGNMENT, token_pointer);
-    break;
-  case TOKEN_SEMI_COLON:
-    type_expression->type = NODE_VARIABLE_DECLARATION;
-    type_expression->variable_declaration.value = NULL;
-    break;
-  case TOKEN_LEFT_PARENTHESES:
-    type_expression = parse_function(type_expression, context, token_pointer);
-    break;
-  default:
-    error("Unknown token: '%s'\n", token_type_to_string(peek_token(token_pointer)->type));
-    return type_expression;
-  }
-
-  assert(type_expression != NULL);
-  return type_expression;
-}
-
 node *parse_do_while(scope_context context, token **token_pointer) {
   node *current_node = create_node(NODE_DO_WHILE);
   expect_token(TOKEN_DO, token_pointer);
@@ -686,6 +655,7 @@ node *parse_do_while(scope_context context, token **token_pointer) {
   assert(current_node != NULL);
   return current_node;
 }
+
 node *parse_while(scope_context context, token **token_pointer) {
   node *current_node = create_node(NODE_WHILE);
   expect_token(TOKEN_WHILE, token_pointer);
@@ -698,6 +668,7 @@ node *parse_while(scope_context context, token **token_pointer) {
   assert(current_node != NULL);
   return current_node;
 }
+
 node *parse_for(scope_context context, token **token_pointer) {
   node *current_node = create_node(NODE_FOR);
   expect_token(TOKEN_FOR, token_pointer);
@@ -812,6 +783,18 @@ node *parse_block(scope_context context, token **token_pointer) {
   return ast;
 }
 
+// Just puts a type into the type hashmap
+void parse_typedef(scope_context context, token **token_pointer) {
+  expect_token(TOKEN_TYPEDEF, token_pointer); 
+  node *type = parse_type(context, token_pointer);
+
+  typedef_entry *entry = malloc(sizeof(typedef_entry));
+  entry->type_expression = type;
+  entry->size_bytes = 8; // TODO: Calculate bytes by looking at all the base types inside of the type node
+  entry->name = expect_token(TOKEN_NAME, token_pointer)->value;
+  add_type_to_context(entry, context);
+}
+
 void print_indents(int indent_level) {
   for (int i = 0; i < indent_level; i++) {
     putchar('\t');
@@ -906,8 +889,6 @@ node *parser(token *tokens) {
   // Pointer to pointer so we can store state of which token we're on
   token **token_pointer = &tokens;
 
-  // The reason passing context by value works is that the typedef_hashmaps pointer stays the same,
-  // so you can always access the hashmaps from anywhere. Each context is limited to it's own function's scope, though
   scope_context context = {
     .typedef_hashmaps = vector_create(),
     .depth = 0,
@@ -927,7 +908,6 @@ node *parser(token *tokens) {
   add_type_to_context(int_entry, context);
   add_type_to_context(char_entry, context);
 
-  // Parse scope (with a depth number of one, we declared int for 0'th layer)
   node *ast = parse_block(context, token_pointer);
 
   print_block(ast, 0);

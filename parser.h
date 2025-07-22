@@ -55,8 +55,8 @@
   X(OPERATOR_LESS_THAN_EQUALS)                                                 \
   X(OPERATOR_GREATER_THAN)                                                     \
   X(OPERATOR_GREATER_THAN_EQUALS)                                              \
-  X(OPERATOR_AND_AND)                                                          \
-  X(OPERATOR_OR_OR)                                                            \
+  X(OPERATOR_BOOLEAN_AND)                                                      \
+  X(OPERATOR_BOOLEAN_OR)                                                       \
   X(OPERATOR_DEREFERENCE)                                                      \
   X(OPERATOR_REFERENCE)
 
@@ -66,10 +66,6 @@ typedef enum { ITERATE_OPERATORS_AND(GENERATE_ENUM) } operator_type;
 // 90% sure this "extern" is required. Remove at your own risk.
 extern const char *node_type_strings[];
 extern const char *operator_type_strings[];
-
-// Call this function to get string from node type
-const char *node_type_to_string(node_type type);
-const char *operator_type_to_string(operator_type type);
 
 typedef enum {
   PRECEDENCE_NONE,
@@ -183,6 +179,65 @@ typedef struct {
   vec_size_t depth; // It is mainly used with vectors so vec_size_t for squashing warnings
 } scope_context;
 
+// FUNCTION PROTOTYPES
+// Helpful debugging functions
+const char *node_type_to_string(node_type type);
+const char *operator_type_to_string(operator_type type);
+
+// Base functions
+void advance_token(token **token_pointer);
+void return_token(token **token_pointer);
+token *pop_token(token **token_pointer);
+token *peek_token(token** token_pointer);
+token *expect_token(token_type type, token **token_pointer);
+bool is_at_end(token **token_pointer);
+node *create_node(node_type type);
+
+// Types
+int compare_typedef_entries(const void *a, const void *b, void *udata);
+uint64_t hash_typedef_entry(const void *data, uint64_t seed0, uint64_t seed1);
+void create_or_clear_context(scope_context context);
+void add_type_to_context(typedef_entry *object, scope_context context);
+bool is_type(char_vector name, scope_context context);
+node_vector collect_members(token_type right_break_token, scope_context context, token **token_pointer);
+node *parse_base_type(scope_context context, token **token_pointer);
+node *parse_structure_type(scope_context context, token **token_pointer);
+node *parse_type(scope_context context, token **token_pointer);
+node *parse_type_expression(scope_context context, token **token_pointer);
+
+// Parsing helpers
+precedence get_precedence(token_type type);
+operator_type get_binary_type(token_type type);
+bool should_parse_unary(token_type type);
+node *create_equation_equals_equation_and_next(node *last_expression, node *next_expression, operator_type operator);
+node *create_struct_member_get(node *from_expression, token **token_pointer);
+
+// Parsing
+node *parse_string(token **token_pointer);
+node *parse_number(token **token_pointer);
+node *parse_variable_expression(token **token_pointer);
+node *parse_struct_member_get(node *from_expression, token **token_pointer);
+node *parse_struct_member_dereference_get(node *from_expression, token **token_pointer);
+node *parse_function_call(node *from_expression, token **token_pointer);
+node *parse_grouping(token **token_pointer);
+node *parse_binary(node *last_expression, token **token_pointer);
+node *parse_unary(token **token_pointer);
+node *parse_postfix(node *last_expression, token **token_pointer);
+node *switch_expression(node *last_expression, node *current_expression, token_type type, token **token_pointer);
+node *parse_expression(precedence precedence, token **token_pointer);
+node *parse_function(node *function_expression, scope_context context, token **token_pointer);
+node *parse_do_while(scope_context context, token **token_pointer);
+node *parse_while(scope_context context, token **token_pointer);
+node *parse_for(scope_context context, token **token_pointer);
+node *parse_if(scope_context context, token **token_pointer);
+node *parse_block(scope_context context, token **token_pointer);
+void parse_typedef(scope_context context, token **token_pointer);
+
+// Parsing visualizers
+void print_indents(int indent_level);
+void print_block(node *ast, int indent_level);
+
+// Main function
 node *parser(token *tokens);
 
 #endif
